@@ -17,8 +17,9 @@ from gowild_fast import (
     create_session,
     destinations,
     get_flight_data,
-    GOWILD_BLACKOUT_DATES,
 )
+# Import centralized configuration
+from config import GOWILD_BLACKOUT_DATES
 
 
 def is_blackout_date(date_str):

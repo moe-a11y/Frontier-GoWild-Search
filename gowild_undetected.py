@@ -12,54 +12,15 @@ from datetime import datetime
 import undetected_chromedriver as uc
 from bs4 import BeautifulSoup
 
+# Import centralized configuration
+from config import SFO_DIRECT_DESTINATIONS, GOWILD_BLACKOUT_DATES
+
 # SFO Direct Destinations (limited for testing)
 TEST_DESTINATIONS = {
     "DEN": "Denver",
     "LAS": "Las Vegas",
     "PHX": "Phoenix",
 }
-
-SFO_DIRECT_DESTINATIONS = {
-    "DEN": "Denver",
-    "LAS": "Las Vegas",
-    "PHX": "Phoenix",
-    "ATL": "Atlanta",
-    "ORD": "Chicago O'Hare",
-    "DFW": "Dallas/Fort Worth",
-    "ONT": "Ontario, CA",
-    "SAN": "San Diego",
-    "SNA": "Orange County",
-    "AUS": "Austin",
-    "IAH": "Houston",
-    "SAT": "San Antonio",
-    "MCO": "Orlando",
-    "MIA": "Miami",
-    "FLL": "Fort Lauderdale",
-    "TPA": "Tampa",
-    "SEA": "Seattle",
-    "PDX": "Portland, OR",
-    "SLC": "Salt Lake City",
-    "MSP": "Minneapolis",
-    "DTW": "Detroit",
-    "BNA": "Nashville",
-    "CLT": "Charlotte",
-    "PHL": "Philadelphia",
-    "BWI": "Baltimore",
-}
-
-GOWILD_BLACKOUT_DATES = [
-    "2025-12-01",
-    "2025-12-20",
-    "2025-12-21",
-    "2025-12-22",
-    "2025-12-23",
-    "2025-12-26",
-    "2025-12-27",
-    "2025-12-28",
-    "2025-12-29",
-    "2025-12-30",
-    "2025-12-31",
-]
 
 
 def create_driver():

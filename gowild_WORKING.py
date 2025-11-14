@@ -12,33 +12,8 @@ from datetime import datetime
 import undetected_chromedriver as uc
 from bs4 import BeautifulSoup
 
-SFO_DIRECT_DESTINATIONS = {
-    "DEN": "Denver",
-    "LAS": "Las Vegas",
-    "PHX": "Phoenix",
-    "ATL": "Atlanta",
-    "ORD": "Chicago O'Hare",
-    "DFW": "Dallas/Fort Worth",
-    "ONT": "Ontario, CA",
-    "SAN": "San Diego",
-    "SNA": "Orange County",
-    "AUS": "Austin",
-    "IAH": "Houston",
-    "SAT": "San Antonio",
-    "MCO": "Orlando",
-    "MIA": "Miami",
-    "FLL": "Fort Lauderdale",
-    "TPA": "Tampa",
-    "SEA": "Seattle",
-    "PDX": "Portland, OR",
-    "SLC": "Salt Lake City",
-    "MSP": "Minneapolis",
-    "DTW": "Detroit",
-    "BNA": "Nashville",
-    "CLT": "Charlotte",
-    "PHL": "Philadelphia",
-    "BWI": "Baltimore",
-}
+# Import centralized configuration
+from config import SFO_DIRECT_DESTINATIONS
 
 
 def main():

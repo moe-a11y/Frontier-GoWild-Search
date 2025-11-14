@@ -13,7 +13,9 @@ import requests
 from bs4 import BeautifulSoup
 
 # Import from gowild_fast
-from gowild_fast import create_session, get_flight_data, GOWILD_BLACKOUT_DATES
+from gowild_fast import create_session, get_flight_data
+# Import centralized configuration
+from config import GOWILD_BLACKOUT_DATES
 
 # Popular/likely destinations from SFO
 POPULAR_DESTINATIONS = {
