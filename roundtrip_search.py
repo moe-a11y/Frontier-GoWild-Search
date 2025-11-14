@@ -12,14 +12,11 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
-# Import destinations from gowild_fast
-from gowild_fast import (
-    create_session,
-    destinations,
-    get_flight_data,
-)
 # Import centralized configuration
 from config import GOWILD_BLACKOUT_DATES
+
+# Import destinations from gowild_fast
+from gowild_fast import create_session, destinations, get_flight_data
 
 
 def is_blackout_date(date_str):

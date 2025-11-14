@@ -75,9 +75,7 @@ GOWILD_BLACKOUT_DATES_2027 = [
 
 # Combine all blackout dates into a single list
 GOWILD_BLACKOUT_DATES = (
-    GOWILD_BLACKOUT_DATES_2025 + 
-    GOWILD_BLACKOUT_DATES_2026 + 
-    GOWILD_BLACKOUT_DATES_2027
+    GOWILD_BLACKOUT_DATES_2025 + GOWILD_BLACKOUT_DATES_2026 + GOWILD_BLACKOUT_DATES_2027
 )
 
 # ============================================================
@@ -94,23 +92,19 @@ SFO_DIRECT_DESTINATIONS = {
     "ATL": "Atlanta",
     "ORD": "Chicago O'Hare",
     "DFW": "Dallas/Fort Worth",
-    
     # Southwest/West Coast
     "ONT": "Ontario, CA",
     "SAN": "San Diego",
     "SNA": "Orange County",
-    
     # Texas Cities
     "AUS": "Austin",
     "IAH": "Houston",
     "SAT": "San Antonio",
-    
     # Florida
     "MCO": "Orlando",
     "MIA": "Miami",
     "FLL": "Fort Lauderdale",
     "TPA": "Tampa",
-    
     # Other Major Cities
     "SEA": "Seattle",
     "PDX": "Portland, OR",
@@ -127,13 +121,14 @@ SFO_DIRECT_DESTINATIONS = {
 # HELPER FUNCTIONS
 # ============================================================
 
+
 def is_blackout_date(date_str):
     """
     Check if a date is a GoWild blackout date.
-    
+
     Args:
         date_str: Date string in YYYY-MM-DD format
-        
+
     Returns:
         bool: True if date is a blackout date, False otherwise
     """
@@ -143,10 +138,10 @@ def is_blackout_date(date_str):
 def get_destination_name(code):
     """
     Get the full name of a destination from its airport code.
-    
+
     Args:
         code: 3-letter airport code (e.g., 'DEN')
-        
+
     Returns:
         str: Full destination name, or the code itself if not found
     """
@@ -156,7 +151,7 @@ def get_destination_name(code):
 def get_all_destination_codes():
     """
     Get a list of all SFO direct destination codes.
-    
+
     Returns:
         list: List of 3-letter airport codes
     """

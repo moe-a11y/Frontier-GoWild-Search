@@ -13,7 +13,7 @@ import undetected_chromedriver as uc
 from bs4 import BeautifulSoup
 
 # Import centralized configuration
-from config import SFO_DIRECT_DESTINATIONS, GOWILD_BLACKOUT_DATES
+from config import GOWILD_BLACKOUT_DATES, SFO_DIRECT_DESTINATIONS
 
 # SFO Direct Destinations (limited for testing)
 TEST_DESTINATIONS = {

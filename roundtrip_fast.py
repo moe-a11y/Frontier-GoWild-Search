@@ -12,10 +12,11 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
-# Import from gowild_fast
-from gowild_fast import create_session, get_flight_data
 # Import centralized configuration
 from config import GOWILD_BLACKOUT_DATES
+
+# Import from gowild_fast
+from gowild_fast import create_session, get_flight_data
 
 # Popular/likely destinations from SFO
 POPULAR_DESTINATIONS = {
