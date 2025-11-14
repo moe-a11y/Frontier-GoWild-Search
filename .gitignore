@@ -1,7 +1,28 @@
+# Data files
 /data.json
-/destinations.txt
-/frontier
 /json_data
 /test_json
-/wed_scrape.py
-/wed_test.py
+
+# Archive and temporary files
+archive/
+results/*.csv
+results/*.log
+*.pyc
+__pycache__/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+venv/
+env/
+*.egg-info/
+
+# OS specific
+.DS_Store
+Thumbs.db
