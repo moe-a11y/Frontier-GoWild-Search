@@ -56,8 +56,10 @@ BETWEEN_REQUESTS = 5   # extra polite delay between routes
 
 
 # --- Browser --------------------------------------------------------------
-def build_driver():
+def build_driver(headless=None):
     """Arch-safe undetected Chrome driver (see gowild_WORKING.build_driver)."""
+    if headless is None:
+        headless = HEADLESS
     from selenium.webdriver.common.selenium_manager import SeleniumManager
 
     paths = SeleniumManager().binary_paths(["--browser", "chrome"])
@@ -81,7 +83,7 @@ def build_driver():
     uc.Patcher.auto = lambda self, *a, **k: None
 
     options = uc.ChromeOptions()
-    if HEADLESS:
+    if headless:
         options.add_argument("--headless=new")
         options.add_argument("--window-size=1400,1000")
     return uc.Chrome(
@@ -196,7 +198,7 @@ def _deal_lines(deal, rank, tag=""):
     return "\n".join([header, detail, date_line])
 
 
-def build_report(deals, meta):
+def build_report(deals, meta, cruise_section=None):
     by_price = lambda d: d["price"]
     gowild = sorted((d for d in deals if d["type"] == "GoWild"), key=by_price)[:10]
     discden = sorted((d for d in deals if d["type"] == "Discount Den"), key=by_price)[:10]
@@ -231,6 +233,9 @@ def build_report(deals, meta):
             out.append(_deal_lines(d, i, tag=tag) + "\n")
     else:
         out.append("   (none found)\n")
+
+    if cruise_section:
+        out.append("\n" + cruise_section)
 
     out.append("\n" + "-" * 40)
     out.append(f"CONUS search date:  {meta['conus_date']}")
@@ -382,7 +387,27 @@ def main():
         "generated": now.strftime("%Y-%m-%d %H:%M:%S PT"),
     }
 
-    report = build_report(all_deals, meta)
+    # Cruise deals (VacationsToGo). Weekly-cached: only scrapes on a cache miss,
+    # and when it does it opens a brief headful window (headless is blocked there).
+    print("\n" + "=" * 60)
+    print("CRUISE DEALS (VacationsToGo, weekly)")
+    print("=" * 60)
+    n_cruise = 0
+    try:
+        from cruise_deals import build_cruise_section, get_cruise_deals
+
+        c_deals, c_when, c_cached = get_cruise_deals()
+        n_cruise = len(c_deals)
+        cruise_section = build_cruise_section(c_deals, c_when, c_cached)
+    except Exception as e:
+        print(f"  cruise check failed: {type(e).__name__}: {e}")
+        cruise_section = (
+            "TOP 10 CRUISE DEALS — VacationsToGo\n"
+            + "-" * 40
+            + f"\n   (cruise check failed: {type(e).__name__})\n"
+        )
+
+    report = build_report(all_deals, meta, cruise_section=cruise_section)
     print("\n" + report)
 
     # Save a copy
@@ -397,7 +422,10 @@ def main():
 
     # Email
     env = load_env()
-    subject = f"Frontier Deals — {len(all_deals)} found ({conus_display} / {intl_display})"
+    subject = (
+        f"Frontier + Cruise Deals — {len(all_deals)} flights, "
+        f"{n_cruise} cruises ({conus_display} / {intl_display})"
+    )
     send_email(subject, report, env)
 
 

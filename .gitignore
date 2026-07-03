@@ -8,6 +8,7 @@ archive/
 results/*.csv
 results/*.log
 results/deal_report_*.txt
+results/cruise_deals.json
 *.pyc
 __pycache__/
 

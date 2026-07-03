@@ -21,11 +21,26 @@ What it does when run:
   - **International / non-CONUS** dests → checks **10 days out**
 - Skips any date that is a **GoWild blackout date** (`config.GOWILD_BLACKOUT_DATES`).
 - Collects **both GoWild and Discount Den** fares.
-- Builds **Top 10 GoWild / Top 10 Discount Den / Top 5 international** (cheapest first),
-  saves the report to `results/deal_report_*.txt`, and **emails** it.
-- Runs **headless** (verified to pass Frontier's PerimeterX bot check with no CAPTCHA).
+- Also pulls **cruise deals** from VacationsToGo via `cruise_deals.py` (see below).
+- Builds **Top 10 GoWild / Top 10 Discount Den / Top 5 international / Top 10 cruises**
+  (cheapest flights first; cruises by highest savings %), saves the report to
+  `results/deal_report_*.txt`, and **emails** it.
+- Flight scraping runs **headless** (verified to pass Frontier's PerimeterX bot check).
 
 Run manually:  `python3 gowild_deal_report.py`  (env `DEAL_HEADLESS=0` for a visible window)
+
+## Cruise deals: `cruise_deals.py`
+Scrapes the **VacationsToGo** "ticker" (last-minute cruise deals). Filters: highest
+"You Save" %, **≤10 nights**, **< $1000**, departing OR ending in **SF, LA, or any
+Florida port**; returns the top 10. Auth: signs in with the member email
+(`VTG_EMAIL`, default muhammadalinajfi1@gmail.com) — VacationsToGo lets members in with
+just an email; registers once if needed.
+- **Weekly cache**: results stored in `results/cruise_deals.json`; a fresh scrape only
+  runs if the cache is older than 7 days (`get_cruise_deals(force=...)` to override).
+- **Must run headful** — VacationsToGo resets connections to headless Chrome, so
+  `scrape_cruise_deals()` forces a visible window. Because of the weekly cache this
+  window only appears ~once a week during the scheduled job.
+- Run manually: `python3 cruise_deals.py [--force]`
 
 ### Scheduling (already installed on this Mac)
 - **launchd** job `com.frontier.dealcheck`, plist at
