@@ -7,6 +7,7 @@
 archive/
 results/*.csv
 results/*.log
+results/deal_report_*.txt
 *.pyc
 __pycache__/
 

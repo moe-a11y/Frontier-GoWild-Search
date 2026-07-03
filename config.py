@@ -42,6 +42,74 @@ GOWILD_BLACKOUT_DATES_2026 = [
     "2026-01-01",
     "2026-01-03",
     "2026-01-04",
+    "2026-01-15",
+    "2026-01-16",
+    "2026-01-19",
+    # February 2026
+    "2026-02-12",
+    "2026-02-13",
+    "2026-02-16",
+    # March 2026
+    "2026-03-13",
+    "2026-03-14",
+    "2026-03-15",
+    "2026-03-20",
+    "2026-03-21",
+    "2026-03-22",
+    "2026-03-27",
+    "2026-03-28",
+    "2026-03-29",
+    # April 2026
+    "2026-04-03",
+    "2026-04-04",
+    "2026-04-05",
+    "2026-04-06",
+    "2026-04-10",
+    "2026-04-11",
+    "2026-04-12",
+    # May 2026
+    "2026-05-21",
+    "2026-05-22",
+    "2026-05-25",
+    # June 2026
+    "2026-06-25",
+    "2026-06-26",
+    "2026-06-27",
+    "2026-06-28",
+    # July 2026
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    # September 2026
+    "2026-09-03",
+    "2026-09-04",
+    "2026-09-07",
+    # October 2026
+    "2026-10-08",
+    "2026-10-09",
+    "2026-10-11",
+    "2026-10-12",
+    # November 2026
+    "2026-11-24",
+    "2026-11-25",
+    "2026-11-28",
+    "2026-11-29",
+    "2026-11-30",
+    # December 2026
+    "2026-12-19",
+    "2026-12-20",
+    "2026-12-21",
+    "2026-12-22",
+    "2026-12-23",
+    "2026-12-24",
+    "2026-12-26",
+    "2026-12-27",
+    "2026-12-28",
+    "2026-12-29",
+    "2026-12-30",
+    "2026-12-31",
 ]
 
 GOWILD_BLACKOUT_DATES_2027 = [
@@ -79,43 +147,60 @@ GOWILD_BLACKOUT_DATES = (
 )
 
 # ============================================================
-# SFO DIRECT DESTINATIONS
+# ORIGIN AIRPORTS
 # ============================================================
-# Frontier Airlines direct destinations from San Francisco (SFO)
-# Based on Frontier route network - verify current routes on flyfrontier.com
+# Bay Area origins to check. Both are nearby, so we cover both.
 
-SFO_DIRECT_DESTINATIONS = {
-    # Major Frontier Hubs
-    "DEN": "Denver",
-    "LAS": "Las Vegas",
-    "PHX": "Phoenix",
-    "ATL": "Atlanta",
-    "ORD": "Chicago O'Hare",
-    "DFW": "Dallas/Fort Worth",
-    # Southwest/West Coast
-    "ONT": "Ontario, CA",
-    "SAN": "San Diego",
-    "SNA": "Orange County",
-    # Texas Cities
-    "AUS": "Austin",
-    "IAH": "Houston",
-    "SAT": "San Antonio",
-    # Florida
-    "MCO": "Orlando",
-    "MIA": "Miami",
-    "FLL": "Fort Lauderdale",
-    "TPA": "Tampa",
-    # Other Major Cities
-    "SEA": "Seattle",
-    "PDX": "Portland, OR",
-    "SLC": "Salt Lake City",
-    "MSP": "Minneapolis",
-    "DTW": "Detroit",
-    "BNA": "Nashville",
-    "CLT": "Charlotte",
-    "PHL": "Philadelphia",
-    "BWI": "Baltimore",
+ORIGINS = ["SFO", "SJC"]
+
+# ============================================================
+# DESTINATIONS TO CHECK FOR DEALS
+# ============================================================
+# Curated list of destinations to check for GoWild / Discount Den deals.
+# Split by international vs domestic (CONUS) because they use different
+# booking windows in the scheduled deal checker:
+#   - Domestic (CONUS): check the NEXT day
+#   - International / non-CONUS: check 10 days out
+# Verify current routes on flyfrontier.com.
+
+# International / non-CONUS (includes Puerto Rico territories)
+INTERNATIONAL_DESTINATIONS = {
+    "CUN": "Cancun, MX",
+    "PVR": "Puerto Vallarta, MX",
+    "GUA": "Guatemala City, GT",
+    "SAL": "San Salvador, El Salvador",
+    "SJO": "San Jose, Costa Rica",
+    "MBJ": "Montego Bay, Jamaica",
+    "SDQ": "Santo Domingo, DR",
+    "PUJ": "Punta Cana, DR",
+    "STI": "Santiago, DR",
+    "BQN": "Aguadilla, PR",
+    "SJU": "San Juan, PR",
+    "SXM": "St. Maarten",
 }
+
+# Domestic (CONUS)
+DOMESTIC_DESTINATIONS = {
+    "LAS": "Las Vegas, NV",
+    "SLC": "Salt Lake City, UT",
+    "CLE": "Cleveland, OH",
+    "TYS": "Knoxville, TN",
+    "ORD": "Chicago O'Hare, IL",
+    "DEN": "Denver, CO",
+    "PHL": "Philadelphia, PA",
+    "RDU": "Raleigh-Durham, NC",
+    "ONT": "Ontario, CA",
+    "MIA": "Miami, FL",
+    "FLL": "Fort Lauderdale, FL",
+    "PBI": "West Palm Beach, FL",
+    "BNA": "Nashville, TN",
+    "MSY": "New Orleans, LA",
+    "BOI": "Boise, ID",
+    "GEG": "Spokane, WA",
+}
+
+# Combined list (international first), used by the single-shot browser scripts.
+SFO_DIRECT_DESTINATIONS = {**INTERNATIONAL_DESTINATIONS, **DOMESTIC_DESTINATIONS}
 
 # ============================================================
 # HELPER FUNCTIONS

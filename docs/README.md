@@ -1,5 +1,12 @@
 # Frontier-GoWild-Search
 
+> **Current status (2026):** The active, production script is **`gowild_deal_report.py`** —
+> an automated GoWild + Discount Den deal checker for SFO & SJC that runs headless on a
+> Tue/Wed/Thu 00:01 **launchd** schedule (`com.frontier.dealcheck`) and emails a Top-10 /
+> Top-10 / Top-5 report. Email creds live in a gitignored `.env` (see `.env.example`).
+> See **`CLAUDE.md`** in the repo root for full operating details (schedule, arm64 driver
+> workaround, config layout). The scripts below are older/experimental.
+
 # Frontier Airlines GoWild Flight Scraper Destination Finder
 
 This program allows users with Frontier Airlines' GoWild all-you-can-fly pass to quickly check the availability of flights to all different destinations. By scraping Frontier Airlines' website, the program provides information on flights available for the current day or the next day from the specified origin airport.
