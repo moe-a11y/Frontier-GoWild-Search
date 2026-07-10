@@ -44,12 +44,18 @@ just an email; registers once if needed.
 
 ### Scheduling (already installed on this Mac)
 - **launchd** job `com.frontier.dealcheck`, plist at
-  `~/Library/LaunchAgents/com.frontier.dealcheck.plist`.
+  `~/Library/LaunchAgents/com.frontier.dealcheck.plist` (tracked copy:
+  `launchd/com.frontier.dealcheck.plist` — if paths change, edit the repo copy,
+  re-copy it to `~/Library/LaunchAgents/`, and reload).
 - Fires **Tue/Wed/Thu at 00:01 local**. launchd runs a missed job on wake (unlike cron);
   the Mac must be awake/asleep-not-off.
 - Logs: `results/dealcheck.log` and `results/dealcheck.err.log`.
 - Pause: `launchctl unload ~/Library/LaunchAgents/com.frontier.dealcheck.plist`
 - Resume: `launchctl load ~/Library/LaunchAgents/com.frontier.dealcheck.plist`
+- ⚠️ The project must live **outside `~/Documents`/`~/Desktop`/`~/Downloads`**: macOS
+  TCC blocks launchd-spawned python from those folders ("Operation not permitted"),
+  which silently killed every scheduled run the week of Jul 7, 2026. The project now
+  lives at `~/Projects/Frontier-GoWild-Search` and the plist points there.
 
 ### Email config (required for the email step)
 Credentials come from a local **`.env`** (gitignored; template `.env.example`).
