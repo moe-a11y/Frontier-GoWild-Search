@@ -300,8 +300,34 @@ def send_email(subject, body, env):
 
 
 # --- Main -----------------------------------------------------------------
+MAX_DRIVER_RESTARTS = 3  # consecutive dead-session restarts before giving up
+
+
+def _restart_driver(driver):
+    """Replace a dead browser session with a fresh, warmed-up one."""
+    try:
+        driver.quit()
+    except Exception:
+        pass
+    driver = build_driver()
+    driver.get("https://www.flyfrontier.com/")
+    time.sleep(5)
+    return driver
+
+
+def _fetch_route(driver, url):
+    driver.get(url)
+    time.sleep(PAGE_WAIT)
+    return parse_flights(driver.page_source)
+
+
 def search_group(driver, destinations, target_dt, is_intl):
-    """Search every origin -> dest in `destinations` for target_dt. Returns deals."""
+    """Search every origin -> dest in `destinations` for target_dt.
+
+    Returns (deals, routes_checked, driver). The driver is returned because a
+    mid-run Chrome crash (InvalidSessionIdException etc.) triggers a rebuild;
+    the caller must keep using the returned instance.
+    """
     iso = target_dt.strftime("%Y-%m-%d")
     display = target_dt.strftime("%b %-d, %Y")
     date_url = display.replace(" ", "%20")
@@ -309,10 +335,11 @@ def search_group(driver, destinations, target_dt, is_intl):
 
     if is_blackout_date(iso):
         print(f"🚫 {label} date {display} ({iso}) is a blackout date - skipping group.")
-        return [], 0
+        return [], 0, driver
 
     deals = []
     routes = 0
+    consecutive_restarts = 0
     for origin in ORIGINS:
         for dest_code, dest_name in destinations.items():
             routes += 1
@@ -322,9 +349,25 @@ def search_group(driver, destinations, target_dt, is_intl):
             )
             print(f"  {label} {origin}->{dest_code} ({display})...", end=" ", flush=True)
             try:
-                driver.get(url)
-                time.sleep(PAGE_WAIT)
-                flights = parse_flights(driver.page_source)
+                try:
+                    flights = _fetch_route(driver, url)
+                except Exception as e:
+                    # A dead session surfaces as InvalidSessionIdException,
+                    # MaxRetryError, etc. depending on how Chrome died — treat
+                    # any fetch failure as session-suspect: restart Chrome and
+                    # retry the route once, otherwise every remaining route
+                    # errors out too.
+                    if consecutive_restarts >= MAX_DRIVER_RESTARTS:
+                        raise
+                    consecutive_restarts += 1
+                    print(
+                        f"{type(e).__name__}; restarting Chrome "
+                        f"({consecutive_restarts}/{MAX_DRIVER_RESTARTS})...",
+                        end=" ",
+                        flush=True,
+                    )
+                    driver = _restart_driver(driver)
+                    flights = _fetch_route(driver, url)
                 found = extract_deals(
                     flights, origin, dest_code, dest_name, display, is_intl
                 )
@@ -332,10 +375,11 @@ def search_group(driver, destinations, target_dt, is_intl):
                 gw = sum(1 for d in found if d["type"] == "GoWild")
                 dd = sum(1 for d in found if d["type"] == "Discount Den")
                 print(f"{len(flights)} flights (GW:{gw} DD:{dd})")
+                consecutive_restarts = 0
             except Exception as e:
                 print(f"error: {type(e).__name__}")
             time.sleep(BETWEEN_REQUESTS)
-    return deals, routes
+    return deals, routes, driver
 
 
 def main():
@@ -361,8 +405,12 @@ def main():
         driver.get("https://www.flyfrontier.com/")
         time.sleep(5)
 
-        d1, r1 = search_group(driver, DOMESTIC_DESTINATIONS, conus_dt, is_intl=False)
-        d2, r2 = search_group(driver, INTERNATIONAL_DESTINATIONS, intl_dt, is_intl=True)
+        d1, r1, driver = search_group(
+            driver, DOMESTIC_DESTINATIONS, conus_dt, is_intl=False
+        )
+        d2, r2, driver = search_group(
+            driver, INTERNATIONAL_DESTINATIONS, intl_dt, is_intl=True
+        )
         all_deals = d1 + d2
         routes_checked = r1 + r2
     finally:
