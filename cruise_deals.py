@@ -7,8 +7,10 @@ email (VacationsToGo lets returning members in with just an email; if the accoun
 does not exist yet it registers once), and finds the best cruise deals matching:
   - highest "You Save" percentage (ranked)
   - 10 nights or less
-  - departing OR ending in San Francisco, Los Angeles, or anywhere in Florida
+  - departing OR ending in California (San Francisco, Los Angeles, San Diego, ...)
+    or anywhere in Florida; at least MIN_CA of the top 10 must touch California
   - sale price < $1000 USD
+Each kept deal also gets its detail page scraped for the ports of call.
 
 Results are cached to results/cruise_deals.json. VacationsToGo deals do not change
 often, so a fresh scrape only runs if the cache is older than CACHE_MAX_AGE_DAYS
@@ -45,10 +47,10 @@ VTG_EMAIL = os.environ.get("VTG_EMAIL", "muhammadalinajfi1@gmail.com")
 MAX_NIGHTS = 10
 MAX_PRICE = 1000
 TOP_N = 10
+MIN_CA = 5  # at least this many of the top N must start OR end in California
 # from OR to port must contain one of these; label -> substrings
 PORT_TARGETS = {
-    "SF": ["San Francisco"],
-    "LA": ["Los Angeles"],
+    "CA": ["San Francisco", "Los Angeles", "San Diego", ", CA", ", California"],
     "FL": [", FL", ", Florida"],
 }
 
@@ -88,6 +90,10 @@ def parse_ticker(html):
             line, ship = cells[5], ""
             if " / " in cells[5]:
                 line, ship = cells[5].split(" / ", 1)
+            a = tr.find("a", href=True)
+            link = a["href"] if a else None
+            if link and not link.startswith("http"):
+                link = "https://www.vacationstogo.com/" + link.lstrip("/")
             deals[cells[0]] = {
                 "id": cells[0],
                 "nights": int(cells[1]) if cells[1].isdigit() else None,
@@ -96,15 +102,17 @@ def parse_ticker(html):
                 "to": cells[4],
                 "line": line.strip(),
                 "ship": ship.strip(),
+                "rating": cells[6],
                 "was": _money(cells[7]),
                 "now": _money(cells[8]),
                 "save": _pct(cells[9]),
                 "note": cells[10],
+                "link": link,
             }
     return list(deals.values())
 
 
-def filter_and_rank(deals, top_n=TOP_N):
+def filter_and_rank(deals, top_n=TOP_N, min_ca=MIN_CA):
     matched = []
     for d in deals:
         if d["nights"] is None or d["nights"] > MAX_NIGHTS:
@@ -119,7 +127,65 @@ def filter_and_rank(deals, top_n=TOP_N):
         d["tags"] = tags
         matched.append(d)
     matched.sort(key=lambda x: x["save"], reverse=True)
-    return matched[:top_n]
+
+    # Reserve at least min_ca slots for cruises that start OR end in California;
+    # only when California can't fill them may other ports take the whole list.
+    ca = [d for d in matched if "CA" in d["tags"]]
+    picked = ca[:min_ca]
+    picked_ids = {id(d) for d in picked}
+    for d in matched:
+        if len(picked) >= top_n:
+            break
+        if id(d) not in picked_ids:
+            picked.append(d)
+            picked_ids.add(id(d))
+    return sorted(picked, key=lambda x: x["save"], reverse=True)
+
+
+def parse_itinerary(html):
+    """Ports of call from a fastdeal page's itinerary table (id=FastdealItinerary).
+
+    Returns the stops between embark and debark, skipping "At Sea" days but
+    keeping scenic cruising entries (e.g. "Glacier Bay ... (Cruising)").
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    tbl = soup.find("table", id="FastdealItinerary")
+    if tbl is None:
+        for cand in soup.find_all("table"):
+            first = cand.find("tr")
+            hdr = [c.get_text(" ", strip=True) for c in first.find_all(["td", "th"])] if first else []
+            if "Port" in hdr and "Arrive" in hdr:
+                tbl = cand
+                break
+    if tbl is None:
+        return []
+    ports = []
+    for tr in tbl.find_all("tr")[1:]:
+        cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+        if len(cells) >= 2 and cells[1] and cells[1].lower() != "at sea":
+            ports.append(cells[1])
+    # Drop embark/debark rows — the report already shows from/to.
+    stops = ports[1:-1] if len(ports) > 2 else []
+    deduped = []
+    for p in stops:
+        if not deduped or deduped[-1] != p:
+            deduped.append(p)
+    return deduped
+
+
+def fetch_itineraries(driver, deals, wait=6):
+    """Visit each deal's fastdeal page and attach its ports of call as d['ports']."""
+    for d in deals:
+        d.setdefault("ports", [])
+        if not d.get("link"):
+            continue
+        try:
+            driver.get(d["link"])
+            time.sleep(wait)
+            d["ports"] = parse_itinerary(driver.page_source)
+            print(f"  itinerary {d['id']}: {len(d['ports'])} stops")
+        except Exception as e:
+            print(f"  itinerary {d['id']} failed: {type(e).__name__}")
 
 
 # --- Browser flow ---------------------------------------------------------
@@ -192,7 +258,8 @@ def scrape_cruise_deals(headless=None):
         all_deals = parse_ticker(html)
         print(f"  parsed {len(all_deals)} cruise deals from ticker")
         top = filter_and_rank(all_deals)
-        print(f"  {len(top)} match filters (<= {MAX_NIGHTS}n, < ${MAX_PRICE}, SF/LA/FL)")
+        print(f"  {len(top)} match filters (<= {MAX_NIGHTS}n, < ${MAX_PRICE}, CA/FL)")
+        fetch_itineraries(driver, top)
         return top
     finally:
         try:
@@ -225,6 +292,10 @@ def get_cruise_deals(force=False, headless=None):
     force=True; otherwise returns the last checked deals.
     """
     cache = _load_cache()
+    # Caches written before the rating/ports/Fastdeal fields existed can't
+    # render the current report — treat them as stale.
+    if cache and cache.get("deals") and "rating" not in cache["deals"][0]:
+        cache = None
     if not force and cache and cache.get("checked_at"):
         try:
             age = datetime.now() - datetime.fromisoformat(cache["checked_at"])
@@ -247,7 +318,7 @@ def get_cruise_deals(force=False, headless=None):
 # --- Report section -------------------------------------------------------
 def build_cruise_section(deals, checked_at, from_cache):
     lines = []
-    lines.append("TOP 10 CRUISE DEALS — VacationsToGo (<=10 nights, <$1000, SF/LA/FL)")
+    lines.append("TOP 10 CRUISE DEALS — VacationsToGo (<=10 nights, <$1000, CA/FL)")
     lines.append("-" * 40)
     if deals:
         for i, d in enumerate(deals, 1):
@@ -260,8 +331,15 @@ def build_cruise_section(deals, checked_at, from_cache):
                 f"      {d['from']} > {d['to']} | {d['nights']} nights | "
                 f"Departs {d['sail']}"
             )
+            rating = d.get("rating")
+            meta = f"      {rating}★ rating | Fastdeal {d['id']}" if rating else f"      Fastdeal {d['id']}"
+            stops = d.get("ports") or []
             lines.append(head)
-            lines.append(itin + "\n")
+            lines.append(itin)
+            lines.append(meta)
+            if stops:
+                lines.append(f"      Stops: {', '.join(stops)}")
+            lines.append("")
     else:
         lines.append("   (none found)\n")
     when = checked_at.split("T")[0] if checked_at else "unknown"

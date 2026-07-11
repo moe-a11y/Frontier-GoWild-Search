@@ -198,10 +198,32 @@ def _deal_lines(deal, rank, tag=""):
     return "\n".join([header, detail, date_line])
 
 
+OVERSERVED_DESTS = {"LAS", "SLC", "DEN"}  # cap these in the top-10 lists
+MIN_OTHER_DESTS = 5  # each top-10 must carry at least this many other destinations
+
+
+def _top_deals(deals, n=10):
+    """Cheapest `n` deals, but reserve at least MIN_OTHER_DESTS slots for
+    destinations outside OVERSERVED_DESTS. Only when there aren't that many
+    non-LAS/SLC/DEN deals may those three fill more than n - MIN_OTHER_DESTS
+    slots."""
+    ranked = sorted(deals, key=lambda d: d["price"])
+    others = [d for d in ranked if d["dest"] not in OVERSERVED_DESTS]
+    picked = others[:MIN_OTHER_DESTS]
+    picked_ids = {id(d) for d in picked}
+    for d in ranked:
+        if len(picked) >= n:
+            break
+        if id(d) not in picked_ids:
+            picked.append(d)
+            picked_ids.add(id(d))
+    return sorted(picked, key=lambda d: d["price"])
+
+
 def build_report(deals, meta, cruise_section=None):
     by_price = lambda d: d["price"]
-    gowild = sorted((d for d in deals if d["type"] == "GoWild"), key=by_price)[:10]
-    discden = sorted((d for d in deals if d["type"] == "Discount Den"), key=by_price)[:10]
+    gowild = _top_deals([d for d in deals if d["type"] == "GoWild"])
+    discden = _top_deals([d for d in deals if d["type"] == "Discount Den"])
     intl = sorted((d for d in deals if d["is_intl"]), key=by_price)[:5]
 
     out = []

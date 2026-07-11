@@ -25,14 +25,21 @@ What it does when run:
 - Builds **Top 10 GoWild / Top 10 Discount Den / Top 5 international / Top 10 cruises**
   (cheapest flights first; cruises by highest savings %), saves the report to
   `results/deal_report_*.txt`, and **emails** it.
+- Each flight top-10 reserves **≥5 slots for destinations other than LAS/SLC/DEN**
+  (`_top_deals`); those three only fill more slots when fewer than 5 other
+  destinations have deals.
 - Flight scraping runs **headless** (verified to pass Frontier's PerimeterX bot check).
 
 Run manually:  `python3 gowild_deal_report.py`  (env `DEAL_HEADLESS=0` for a visible window)
 
 ## Cruise deals: `cruise_deals.py`
 Scrapes the **VacationsToGo** "ticker" (last-minute cruise deals). Filters: highest
-"You Save" %, **≤10 nights**, **< $1000**, departing OR ending in **SF, LA, or any
-Florida port**; returns the top 10. Auth: signs in with the member email
+"You Save" %, **≤10 nights**, **< $1000**, departing OR ending in **California
+(SF/LA/San Diego/any ", CA") or any Florida port**; returns the top 10 with
+**≥5 California-touching cruises reserved** (Florida may only fill those slots when
+fewer than 5 CA deals exist). Each kept deal's **fastdeal detail page** is also
+scraped for its **ports of call**; the report shows stops, **star rating**, and
+**Fastdeal id**. Auth: signs in with the member email
 (`VTG_EMAIL`, default muhammadalinajfi1@gmail.com) — VacationsToGo lets members in with
 just an email; registers once if needed.
 - **Weekly cache**: results stored in `results/cruise_deals.json`; a fresh scrape only
