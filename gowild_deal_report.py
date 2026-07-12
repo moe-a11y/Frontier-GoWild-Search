@@ -28,6 +28,7 @@ not emailed.
 import html as html_lib
 import json
 import os
+import re
 import shutil
 import smtplib
 import subprocess
@@ -186,14 +187,23 @@ def _short_name(name):
     return name.split(",")[0].strip()
 
 
+def _seats_left(val):
+    """Frontier returns seats remaining as an int or as text ("2 Seats Left!")."""
+    if isinstance(val, (int, float)):
+        return int(val)
+    m = re.search(r"\d+", str(val or ""))
+    return int(m.group()) if m else None
+
+
 def _deal_lines(deal, rank, tag=""):
     city = _short_name(deal["dest_name"])
     header = f"{rank:>4}. {deal['origin']} > {deal['dest']} ({city}) — ${deal['price']:.2f}"
     if tag:
         header += f"  [{tag}]"
     detail = f"      {deal['stops']} | {deal['duration']} | Departs {deal['departs']}"
-    if deal["type"] == "GoWild" and deal.get("seats") is not None:
-        detail += f" | {deal['seats']} seats left"
+    seats = _seats_left(deal.get("seats")) if deal["type"] == "GoWild" else None
+    if seats is not None:
+        detail += f" | {seats} seats left"
     date_line = f"      Flight date: {deal['flight_date']}"
     return "\n".join([header, detail, date_line])
 

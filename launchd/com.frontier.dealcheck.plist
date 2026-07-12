@@ -5,8 +5,12 @@
     <key>Label</key>
     <string>com.frontier.dealcheck</string>
 
+    <!-- caffeinate -i keeps the Mac from idle-sleeping mid-run; a sleep during
+         the ~45 min scrape kills Chrome and drops the network (seen 2026-07-10). -->
     <key>ProgramArguments</key>
     <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
         <string>/usr/bin/python3</string>
         <string>/Users/muham/Projects/Frontier-GoWild-Search/gowild_deal_report.py</string>
     </array>
