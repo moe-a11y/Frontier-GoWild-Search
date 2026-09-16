@@ -18,7 +18,9 @@ This is the current, primary, production script. Everything else is older/experi
 What it does when run:
 - For each origin in `config.ORIGINS` (**SFO, SJC**):
   - **Domestic (CONUS)** dests → checks the **next day**
-  - **International / non-CONUS** dests → checks **10 days out**
+  - **International / non-CONUS** dests → checks **10, 7, and 4 days out**
+    (`INTL_DAYS_OUT`; GoWild int'l opens 10 days before departure, and closer
+    dates can carry GoWild fares the 10-day date doesn't)
 - Skips any date that is a **GoWild blackout date** (`config.GOWILD_BLACKOUT_DATES`).
 - Collects **both GoWild and Discount Den** fares.
 - Also pulls **cruise deals** from VacationsToGo via `cruise_deals.py` (see below).
@@ -27,7 +29,8 @@ What it does when run:
   `results/deal_report_*.txt`, and **emails** it.
 - Each flight top-10 reserves **≥5 slots for destinations other than LAS/SLC/DEN**
   (`_top_deals`); those three only fill more slots when fewer than 5 other
-  destinations have deals.
+  destinations have deals. The int'l top-5 lists **GoWild fares first** (user
+  preference); Discount Den only fills leftover slots.
 - Flight scraping runs **headless** (verified to pass Frontier's PerimeterX bot check).
 
 Run manually:  `python3 gowild_deal_report.py`  (env `DEAL_HEADLESS=0` for a visible window)

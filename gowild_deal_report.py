@@ -54,6 +54,9 @@ DEFAULT_EMAIL_TO = "muhammadalinajfi1@gmail.com"
 HEADLESS = os.environ.get("DEAL_HEADLESS", "1") == "1"
 PAGE_WAIT = 9          # seconds to let each results page load
 BETWEEN_REQUESTS = 5   # extra polite delay between routes
+# GoWild international opens for booking 10 days before departure, so days
+# closer in can carry GoWild fares the 10-day date doesn't — scan several.
+INTL_DAYS_OUT = [10, 7, 4]
 
 
 # --- Browser --------------------------------------------------------------
@@ -234,7 +237,16 @@ def build_report(deals, meta, cruise_section=None):
     by_price = lambda d: d["price"]
     gowild = _top_deals([d for d in deals if d["type"] == "GoWild"])
     discden = _top_deals([d for d in deals if d["type"] == "Discount Den"])
-    intl = sorted((d for d in deals if d["is_intl"]), key=by_price)[:5]
+    # International: GoWild fares first (all of them, cheapest first) — Discount
+    # Den only fills whatever of the 5 slots remain.
+    intl_gw = sorted(
+        (d for d in deals if d["is_intl"] and d["type"] == "GoWild"), key=by_price
+    )
+    intl_dd = sorted(
+        (d for d in deals if d["is_intl"] and d["type"] == "Discount Den"),
+        key=by_price,
+    )
+    intl = (intl_gw + intl_dd)[:5]
 
     out = []
     out.append("=" * 50)
@@ -417,15 +429,16 @@ def search_group(driver, destinations, target_dt, is_intl):
 def main():
     now = datetime.now()
     conus_dt = now + timedelta(days=1)    # domestic: next day
-    intl_dt = now + timedelta(days=10)    # international: 10 days out
+    # International: GoWild opens 10 days out; scan several dates inside the window.
+    intl_dts = [now + timedelta(days=n) for n in INTL_DAYS_OUT]
 
     conus_display = conus_dt.strftime("%b %-d, %Y")
-    intl_display = intl_dt.strftime("%b %-d, %Y")
+    intl_display = ", ".join(dt.strftime("%b %-d") for dt in intl_dts)
 
     print("=" * 60)
     print("FRONTIER DEAL CHECKER")
     print(f"  CONUS (next day):   {conus_display}")
-    print(f"  Int'l (10 days out): {intl_display}")
+    print(f"  Int'l ({'/'.join(str(n) for n in INTL_DAYS_OUT)} days out): {intl_display}")
     print(f"  Origins: {', '.join(ORIGINS)}  |  headless={HEADLESS}")
     print("=" * 60)
 
@@ -440,11 +453,14 @@ def main():
         d1, r1, driver = search_group(
             driver, DOMESTIC_DESTINATIONS, conus_dt, is_intl=False
         )
-        d2, r2, driver = search_group(
-            driver, INTERNATIONAL_DESTINATIONS, intl_dt, is_intl=True
-        )
-        all_deals = d1 + d2
-        routes_checked = r1 + r2
+        all_deals = d1
+        routes_checked = r1
+        for intl_dt in intl_dts:
+            d2, r2, driver = search_group(
+                driver, INTERNATIONAL_DESTINATIONS, intl_dt, is_intl=True
+            )
+            all_deals += d2
+            routes_checked += r2
     finally:
         try:
             driver.quit()
@@ -455,8 +471,9 @@ def main():
     notes = []
     if is_blackout_date(conus_dt.strftime("%Y-%m-%d")):
         notes.append(f"{conus_display} (CONUS)")
-    if is_blackout_date(intl_dt.strftime("%Y-%m-%d")):
-        notes.append(f"{intl_display} (Int'l)")
+    for dt in intl_dts:
+        if is_blackout_date(dt.strftime("%Y-%m-%d")):
+            notes.append(f"{dt.strftime('%b %-d')} (Int'l)")
     blackout_note = ", ".join(notes) if notes else "None"
 
     meta = {
