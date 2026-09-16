@@ -98,6 +98,14 @@ undetected-chromedriver.
 - `gowild_WORKING.py` — interactive browser search from SFO+SJC for tomorrow; manual
   CAPTCHA solving; GoWild only. Good for a quick one-off look.
 - `gowild_scraper.py` — original interactive undetected-chromedriver scraper (any origin, prompts).
-- `gowild_fast.py`, `gowild_fast_bypass.py`, `roundtrip_*.py` — `requests`/`curl_cffi`
-  experiments; **blocked by PerimeterX** in practice. `roundtrip_*` reuse `gowild_fast`.
+- `roundtrip_deal_report.py` — **working** (browser-based, reuses `gowild_deal_report`
+  helpers). Ad-hoc round-trip search: `--out` / `--back` date lists, pairs legs into
+  round trips ranked by total price, emails the report.
+- `buf_watch.py` — **temporary** SFO/SJC→BUF GoWild watch for Sep 17–19, 2026, run by
+  its own launchd job `com.frontier.bufwatch` (`launchd/com.frontier.bufwatch.plist`).
+  No-ops after 2026-09-17; unload and delete the installed plist once it's over.
+- `colombia_*.py` — read-only Colombia (via MCO) trip searches; data in `results/colombia_*/`.
+- `gowild_fast.py`, `gowild_fast_bypass.py`, `roundtrip_fast.py`, `roundtrip_search.py` —
+  `requests`/`curl_cffi` experiments; **blocked by PerimeterX** in practice. The two
+  `roundtrip_fast`/`roundtrip_search` scripts reuse `gowild_fast`.
 - `tests/` — probes from the PerimeterX investigation. `docs/` — investigation write-ups.
