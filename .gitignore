@@ -28,3 +28,10 @@ env/
 # OS specific
 .DS_Store
 Thumbs.db
+results/roundtrip_report_*.txt
+results/bufwatch_*.txt
+results/bufwatch_last.json
+results/colombia_*/
+
+# Claude Code personal settings
+.claude/settings.local.json
