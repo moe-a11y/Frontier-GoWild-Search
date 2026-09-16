@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.frontier.bufwatch</string>
+
+    <!-- Short-lived SFO/SJC->BUF GoWild watch (buf_watch.py), independent of
+         com.frontier.dealcheck. Sep 14-16 at 00:01 and 10:01, plus Thu Sep 17
+         00:01. Month/Day entries recur yearly, so buf_watch.py no-ops after
+         2026-09-17; unload and delete this plist once the watch is over. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
+        <string>/usr/bin/python3</string>
+        <string>/Users/muham/Projects/Frontier-GoWild-Search/buf_watch.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/muham/Projects/Frontier-GoWild-Search</string>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Month</key><integer>9</integer><key>Day</key><integer>14</integer><key>Hour</key><integer>0</integer><key>Minute</key><integer>1</integer></dict>
+        <dict><key>Month</key><integer>9</integer><key>Day</key><integer>14</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>1</integer></dict>
+        <dict><key>Month</key><integer>9</integer><key>Day</key><integer>15</integer><key>Hour</key><integer>0</integer><key>Minute</key><integer>1</integer></dict>
+        <dict><key>Month</key><integer>9</integer><key>Day</key><integer>15</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>1</integer></dict>
+        <dict><key>Month</key><integer>9</integer><key>Day</key><integer>16</integer><key>Hour</key><integer>0</integer><key>Minute</key><integer>1</integer></dict>
+        <dict><key>Month</key><integer>9</integer><key>Day</key><integer>16</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>1</integer></dict>
+        <dict><key>Month</key><integer>9</integer><key>Day</key><integer>17</integer><key>Hour</key><integer>0</integer><key>Minute</key><integer>1</integer></dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/muham/Projects/Frontier-GoWild-Search/results/bufwatch.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/muham/Projects/Frontier-GoWild-Search/results/bufwatch.err.log</string>
+</dict>
+</plist>
