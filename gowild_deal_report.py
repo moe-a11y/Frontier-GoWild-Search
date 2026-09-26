@@ -2,10 +2,10 @@
 """
 Scheduled Frontier deal checker + emailer.
 
-Runs unattended (intended: Tue/Wed/Thu 00:01 local via launchd). For each origin
-in config.ORIGINS it checks:
+Runs unattended (intended: Tue/Wed/Thu 00:01 Pacific, via Windows Task Scheduler —
+see windows/). For each origin in config.ORIGINS it checks (dates in Pacific time):
   - Domestic (CONUS) destinations for the NEXT day
-  - International / non-CONUS destinations for 10 days out
+  - International / non-CONUS destinations for 10, 7 and 4 days out
 ...collecting BOTH GoWild fares and Discount Den fares. It then builds a report of
 the Top 10 GoWild deals, Top 10 Discount Den deals, and Top 5 international deals
 (cheapest first) and emails it.
@@ -36,6 +36,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
+from zoneinfo import ZoneInfo
 
 import undetected_chromedriver as uc
 from bs4 import BeautifulSoup
@@ -58,6 +59,12 @@ BETWEEN_REQUESTS = 5   # extra polite delay between routes
 # GoWild international opens for booking 10 days before departure, so days
 # closer in can carry GoWild fares the 10-day date doesn't — scan several.
 INTL_DAYS_OUT = [10, 7, 4]
+# GoWild seats open at midnight local time of the departure city, and every
+# origin is in the Bay Area — so "next day" / "N days out" are Pacific dates,
+# whatever time zone this machine is in.
+ORIGIN_TZ = ZoneInfo("America/Los_Angeles")
+CAPTCHA_BACKOFF = 60     # seconds to wait before retrying a captcha'd route
+MAX_BLOCKED_ROUTES = 6   # stop scraping for the run after this many blocked routes
 
 
 def _fmt_day(dt, with_year=True):
@@ -276,6 +283,14 @@ def build_report(deals, meta, cruise_section=None):
     out.append("=" * 50)
     out.append("GOWILD & DISCOUNT DEN DEAL REPORT")
     out.append("=" * 50)
+    blocked = meta.get("blocked") or []
+    if blocked:
+        out.append(
+            f"⚠️  PARTIAL RESULTS: {len(blocked)} route(s) were captcha-blocked "
+            "by Frontier's bot check and are missing below."
+        )
+        if len(blocked) >= MAX_BLOCKED_ROUTES:
+            out.append("    The captcha limit was hit, so the remaining routes were skipped.")
 
     out.append("\nTOP 10 GOWILD DEALS")
     out.append("-" * 40)
@@ -311,6 +326,7 @@ def build_report(deals, meta, cruise_section=None):
     out.append(f"Origins:            {', '.join(ORIGINS)}")
     out.append(f"Destinations checked:       {meta['routes_checked']}")
     out.append(f"Blackout skipped:   {meta['blackout_note']}")
+    out.append(f"Captcha-blocked:    {', '.join(blocked) if blocked else 'None'}")
     out.append(f"Generated:          {meta['generated']}")
     return "\n".join(out)
 
@@ -384,17 +400,22 @@ def _restart_driver(driver):
 
 
 def _fetch_route(driver, url):
+    """Returns (flights, blocked). `blocked` means PerimeterX served a captcha,
+    which parse_flights would otherwise report as a route with no flights."""
     driver.get(url)
     time.sleep(PAGE_WAIT)
-    return parse_flights(driver.page_source)
+    src = driver.page_source
+    return parse_flights(src), "px-captcha" in src
 
 
-def search_group(driver, destinations, target_dt, is_intl):
+def search_group(driver, destinations, target_dt, is_intl, blocked):
     """Search every origin -> dest in `destinations` for target_dt.
 
     Returns (deals, routes_checked, driver). The driver is returned because a
     mid-run Chrome crash (InvalidSessionIdException etc.) triggers a rebuild;
-    the caller must keep using the returned instance.
+    the caller must keep using the returned instance. Routes still captcha'd
+    after a backoff + fresh browser are appended to `blocked` (shared across
+    groups); once it holds MAX_BLOCKED_ROUTES the remaining routes are skipped.
     """
     iso = target_dt.strftime("%Y-%m-%d")
     display = _fmt_day(target_dt)
@@ -410,6 +431,9 @@ def search_group(driver, destinations, target_dt, is_intl):
     consecutive_restarts = 0
     for origin in ORIGINS:
         for dest_code, dest_name in destinations.items():
+            if len(blocked) >= MAX_BLOCKED_ROUTES:
+                print(f"  {label} {origin}->{dest_code}: skipped (captcha limit reached)")
+                continue
             routes += 1
             url = (
                 f"https://booking.flyfrontier.com/Flight/InternalSelect?"
@@ -418,7 +442,7 @@ def search_group(driver, destinations, target_dt, is_intl):
             print(f"  {label} {origin}->{dest_code} ({display})...", end=" ", flush=True)
             try:
                 try:
-                    flights = _fetch_route(driver, url)
+                    flights, is_blocked = _fetch_route(driver, url)
                 except Exception as e:
                     # A dead session surfaces as InvalidSessionIdException,
                     # MaxRetryError, etc. depending on how Chrome died — treat
@@ -435,7 +459,21 @@ def search_group(driver, destinations, target_dt, is_intl):
                         flush=True,
                     )
                     driver = _restart_driver(driver)
-                    flights = _fetch_route(driver, url)
+                    flights, is_blocked = _fetch_route(driver, url)
+                if is_blocked:
+                    print(
+                        f"captcha; backing off {CAPTCHA_BACKOFF}s with a fresh browser...",
+                        end=" ",
+                        flush=True,
+                    )
+                    time.sleep(CAPTCHA_BACKOFF)
+                    driver = _restart_driver(driver)
+                    flights, is_blocked = _fetch_route(driver, url)
+                if is_blocked:
+                    blocked.append(f"{origin}>{dest_code} ({_fmt_day(target_dt, with_year=False)})")
+                    print("still blocked - skipped")
+                    time.sleep(BETWEEN_REQUESTS)
+                    continue
                 found = extract_deals(
                     flights, origin, dest_code, dest_name, display, is_intl
                 )
@@ -452,7 +490,7 @@ def search_group(driver, destinations, target_dt, is_intl):
 
 def main():
     _keep_awake()
-    now = datetime.now()
+    now = datetime.now(ORIGIN_TZ)
     conus_dt = now + timedelta(days=1)    # domestic: next day
     # International: GoWild opens 10 days out; scan several dates inside the window.
     intl_dts = [now + timedelta(days=n) for n in INTL_DAYS_OUT]
@@ -470,19 +508,21 @@ def main():
     driver = build_driver()
     all_deals = []
     routes_checked = 0
+    blocked = []
     try:
         # Warm up
         driver.get("https://www.flyfrontier.com/")
         time.sleep(5)
 
         d1, r1, driver = search_group(
-            driver, DOMESTIC_DESTINATIONS, conus_dt, is_intl=False
+            driver, DOMESTIC_DESTINATIONS, conus_dt, is_intl=False, blocked=blocked
         )
         all_deals = d1
         routes_checked = r1
         for intl_dt in intl_dts:
             d2, r2, driver = search_group(
-                driver, INTERNATIONAL_DESTINATIONS, intl_dt, is_intl=True
+                driver, INTERNATIONAL_DESTINATIONS, intl_dt, is_intl=True,
+                blocked=blocked,
             )
             all_deals += d2
             routes_checked += r2
@@ -506,7 +546,8 @@ def main():
         "intl_date": intl_display,
         "routes_checked": routes_checked,
         "blackout_note": blackout_note,
-        "generated": now.strftime("%Y-%m-%d %H:%M:%S PT"),
+        "blocked": blocked,
+        "generated": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
     }
 
     # Cruise deals (VacationsToGo). Weekly-cached: only scrapes on a cache miss,
@@ -545,7 +586,8 @@ def main():
     # Email
     env = load_env()
     subject = (
-        f"Frontier + Cruise Deals — {len(all_deals)} flights, "
+        ("[PARTIAL] " if blocked else "")
+        + f"Frontier + Cruise Deals — {len(all_deals)} flights, "
         f"{n_cruise} cruises ({conus_display} / {intl_display})"
     )
     send_email(subject, report, env)

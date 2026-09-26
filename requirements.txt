@@ -1,0 +1,5 @@
+undetected-chromedriver
+selenium
+beautifulsoup4
+setuptools  # undetected-chromedriver imports distutils, removed from Python 3.12
+tzdata      # zoneinfo has no system tz database on Windows

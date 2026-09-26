@@ -32,6 +32,11 @@ What it does when run:
   destinations have deals. The int'l top-5 lists **GoWild fares first** (user
   preference); Discount Den only fills leftover slots.
 - Flight scraping runs **headless** (verified to pass Frontier's PerimeterX bot check).
+- **All dates are Pacific** (`ORIGIN_TZ`): GoWild seats open at midnight local time of
+  the *departure* city, so "next day" must be computed in PT whatever the PC's zone.
+- A captcha page is detected (not silently read as "0 flights"): the route is retried
+  after `CAPTCHA_BACKOFF` with a fresh browser; still-blocked routes are listed in the
+  report and the subject gets `[PARTIAL]`. After `MAX_BLOCKED_ROUTES` the rest are skipped.
 
 Run manually:  `python3 gowild_deal_report.py`  (env `DEAL_HEADLESS=0` for a visible window)
 
@@ -53,12 +58,23 @@ just an email; registers once if needed.
 - Run manually: `python3 cruise_deals.py [--force]`
 
 ### Scheduling on Windows (current machine, since Sep 26, 2026)
-- Task Scheduler task **"Frontier Deal Check"**, Tue/Wed/Thu 00:01 local. Registered by
-  `windows/install_dealcheck_task.ps1` (re-run it if the project moves:
-  `powershell -ExecutionPolicy Bypass -File windows\install_dealcheck_task.ps1`).
-- Action: `windows/run_dealcheck.cmd` → Python 3.12 at
-  `%LOCALAPPDATA%\Programs\Python\Python312\python.exe` with `PYTHONUTF8=1` (without it,
-  emoji prints crash under cp1252). Logs append to `results/dealcheck.log` / `.err.log`.
+- **Runbook: the `deal-check` project skill** (`.claude/skills/deal-check/SKILL.md`) —
+  status checks, exit codes, common failures, run-now.
+- Task Scheduler task **"Frontier Deal Check"**, Tue/Wed/Thu **00:01 Pacific** (the
+  installer converts to local time: 03:01 on this Eastern-time PC). Registered by
+  `windows/install_dealcheck_task.ps1` (re-run it if the project moves or the PC's time
+  zone changes: `powershell -ExecutionPolicy Bypass -File windows\install_dealcheck_task.ps1`).
+- A crashed run emails "Frontier deal checker FAILED" with the traceback.
+- Setup on a fresh machine: `python -m pip install -r requirements.txt`, create `.env`,
+  run the installer.
+- Action: `pythonw.exe -X utf8 windows\run_dealcheck.pyw` (Python 3.12 at
+  `%LOCALAPPDATA%\Programs\Python\Python312\`). The launcher redirects output itself and
+  appends to `results/dealcheck.log` / `.err.log`. `-X utf8` is required: the report's
+  emoji and ★ can't be written under cp1252.
+- Why pythonw and not a `.cmd` wrapper: a console window can be closed (the run dies with
+  0xC000013A), and headless Chrome inherits cmd's redirected log handles, so an orphaned
+  Chrome keeps the logs locked and the next run fails with PermissionError. If that ever
+  recurs, find the holder (Restart Manager / Resource Monitor) and kill that Chrome.
 - Missed runs start when available; WakeToRun wakes the PC; `_keep_awake()` blocks idle
   sleep mid-run. Interactive logon only (cruise scrape needs a visible Chrome window), so
   the user must be logged in (locked is fine).
