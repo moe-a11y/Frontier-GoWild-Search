@@ -60,7 +60,7 @@ just an email; registers once if needed.
 ### Scheduling on Windows (current machine, since Sep 26, 2026)
 - **Runbook: the `deal-check` project skill** (`.claude/skills/deal-check/SKILL.md`) —
   status checks, exit codes, common failures, run-now.
-- Task Scheduler task **"Frontier Deal Check"**, Tue/Wed/Thu **00:01 Pacific** (the
+- Task Scheduler task **"Frontier Deal Check"**, Mon/Tue/Wed **00:01 Pacific** (the
   installer converts to local time: 03:01 on this Eastern-time PC). Registered by
   `windows/install_dealcheck_task.ps1` (re-run it if the project moves or the PC's time
   zone changes: `powershell -ExecutionPolicy Bypass -File windows\install_dealcheck_task.ps1`).

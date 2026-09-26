@@ -1,5 +1,5 @@
 # Registers (or re-registers) the "Frontier Deal Check" scheduled task:
-# Tue/Wed/Thu at 00:01 *Pacific*, running windows\run_dealcheck.pyw windowless.
+# Mon/Tue/Wed at 00:01 *Pacific*, running windows\run_dealcheck.pyw windowless.
 # Re-run this after moving the project folder or changing the PC's time zone.
 #
 #   powershell -ExecutionPolicy Bypass -File windows\install_dealcheck_task.ps1
@@ -21,7 +21,8 @@ $pt = [TimeZoneInfo]::FindSystemTimeZoneById("Pacific Standard Time")
 $ptRun = [TimeZoneInfo]::ConvertTime([DateTime]::Now, $pt).Date.AddMinutes(1)
 $localRun = [TimeZoneInfo]::ConvertTime($ptRun, $pt, [TimeZoneInfo]::Local)
 $shift = ($localRun.Date - $ptRun.Date).Days
-$days = "Tuesday", "Wednesday", "Thursday" |
+# Mon/Tue/Wed runs search Tue/Wed/Thu flights — the best GoWild availability days.
+$days = "Monday", "Tuesday", "Wednesday" |
     ForEach-Object { [DayOfWeek]((([int][DayOfWeek]$_) + $shift + 7) % 7) }
 $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At $localRun.ToString("HH:mm")
 

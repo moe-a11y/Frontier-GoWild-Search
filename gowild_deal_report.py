@@ -2,7 +2,7 @@
 """
 Scheduled Frontier deal checker + emailer.
 
-Runs unattended (intended: Tue/Wed/Thu 00:01 Pacific, via Windows Task Scheduler —
+Runs unattended (intended: Mon/Tue/Wed 00:01 Pacific, via Windows Task Scheduler —
 see windows/). For each origin in config.ORIGINS it checks (dates in Pacific time):
   - Domestic (CONUS) destinations for the NEXT day
   - International / non-CONUS destinations for 10, 7 and 4 days out

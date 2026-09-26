@@ -6,7 +6,7 @@ description: Check on, run, or troubleshoot the scheduled Frontier deal checker 
 # Operating the scheduled deal checker (Windows)
 
 The job: Task Scheduler task **"Frontier Deal Check"** → `pythonw.exe -X utf8 windows\run_dealcheck.pyw`
-→ `gowild_deal_report.main()`. Tue/Wed/Thu at 00:01 **Pacific** (03:01 on Eastern time).
+→ `gowild_deal_report.main()`. Mon/Tue/Wed at 00:01 **Pacific** (03:01 on Eastern time).
 Python: `%LOCALAPPDATA%\Programs\Python\Python312\`. Logs: `results/dealcheck.log`, `results/dealcheck.err.log`.
 Reports: `results/deal_report_*.txt`. Email creds: `.env` (gitignored; Gmail App Password).
 
