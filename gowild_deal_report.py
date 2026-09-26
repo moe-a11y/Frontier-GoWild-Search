@@ -32,6 +32,7 @@ import re
 import shutil
 import smtplib
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
@@ -59,6 +60,25 @@ BETWEEN_REQUESTS = 5   # extra polite delay between routes
 INTL_DAYS_OUT = [10, 7, 4]
 
 
+def _fmt_day(dt, with_year=True):
+    """"Jul 3, 2026" / "Jul 3" — portable stand-in for strftime("%b %-d"),
+    since "%-d" is glibc/BSD-only and raises ValueError on Windows."""
+    s = f"{dt:%b} {dt.day}"
+    return f"{s}, {dt:%Y}" if with_year else s
+
+
+def _keep_awake():
+    """Stop Windows idle-sleeping mid-run (the macOS job used `caffeinate -i`).
+    Lasts until this process exits."""
+    if sys.platform == "win32":
+        import ctypes
+
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(
+            ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+        )
+
+
 # --- Browser --------------------------------------------------------------
 def build_driver(headless=None):
     """Arch-safe undetected Chrome driver (see gowild_WORKING.build_driver)."""
@@ -78,11 +98,15 @@ def build_driver(headless=None):
     except Exception:
         version_main = None
 
-    signed = driver_path + "_uc_signed"
-    if not os.path.exists(signed):
-        shutil.copy2(driver_path, signed)
-        os.chmod(signed, 0o755)
-        subprocess.run(["codesign", "--force", "--sign", "-", signed], check=False)
+    # macOS only: ad-hoc re-sign a copy so the arm64 code signature stays valid.
+    # Other platforms can use Selenium Manager's driver as-is.
+    signed = driver_path
+    if sys.platform == "darwin":
+        signed = driver_path + "_uc_signed"
+        if not os.path.exists(signed):
+            shutil.copy2(driver_path, signed)
+            os.chmod(signed, 0o755)
+            subprocess.run(["codesign", "--force", "--sign", "-", signed], check=False)
 
     uc.Patcher.auto = lambda self, *a, **k: None
 
@@ -373,7 +397,7 @@ def search_group(driver, destinations, target_dt, is_intl):
     the caller must keep using the returned instance.
     """
     iso = target_dt.strftime("%Y-%m-%d")
-    display = target_dt.strftime("%b %-d, %Y")
+    display = _fmt_day(target_dt)
     date_url = display.replace(" ", "%20")
     label = "INT'L" if is_intl else "CONUS"
 
@@ -427,13 +451,14 @@ def search_group(driver, destinations, target_dt, is_intl):
 
 
 def main():
+    _keep_awake()
     now = datetime.now()
     conus_dt = now + timedelta(days=1)    # domestic: next day
     # International: GoWild opens 10 days out; scan several dates inside the window.
     intl_dts = [now + timedelta(days=n) for n in INTL_DAYS_OUT]
 
-    conus_display = conus_dt.strftime("%b %-d, %Y")
-    intl_display = ", ".join(dt.strftime("%b %-d") for dt in intl_dts)
+    conus_display = _fmt_day(conus_dt)
+    intl_display = ", ".join(_fmt_day(dt, with_year=False) for dt in intl_dts)
 
     print("=" * 60)
     print("FRONTIER DEAL CHECKER")
@@ -473,7 +498,7 @@ def main():
         notes.append(f"{conus_display} (CONUS)")
     for dt in intl_dts:
         if is_blackout_date(dt.strftime("%Y-%m-%d")):
-            notes.append(f"{dt.strftime('%b %-d')} (Int'l)")
+            notes.append(f"{_fmt_day(dt, with_year=False)} (Int'l)")
     blackout_note = ", ".join(notes) if notes else "None"
 
     meta = {

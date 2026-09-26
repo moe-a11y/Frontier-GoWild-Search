@@ -52,7 +52,21 @@ just an email; registers once if needed.
   window only appears ~once a week during the scheduled job.
 - Run manually: `python3 cruise_deals.py [--force]`
 
-### Scheduling (already installed on this Mac)
+### Scheduling on Windows (current machine, since Sep 26, 2026)
+- Task Scheduler task **"Frontier Deal Check"**, Tue/Wed/Thu 00:01 local. Registered by
+  `windows/install_dealcheck_task.ps1` (re-run it if the project moves:
+  `powershell -ExecutionPolicy Bypass -File windows\install_dealcheck_task.ps1`).
+- Action: `windows/run_dealcheck.cmd` → Python 3.12 at
+  `%LOCALAPPDATA%\Programs\Python\Python312\python.exe` with `PYTHONUTF8=1` (without it,
+  emoji prints crash under cp1252). Logs append to `results/dealcheck.log` / `.err.log`.
+- Missed runs start when available; WakeToRun wakes the PC; `_keep_awake()` blocks idle
+  sleep mid-run. Interactive logon only (cruise scrape needs a visible Chrome window), so
+  the user must be logged in (locked is fine).
+- Pause/resume: `Disable-ScheduledTask` / `Enable-ScheduledTask -TaskName "Frontier Deal Check"`.
+- `build_driver()` only does the codesign dance on macOS; the `%-d` strftime format is
+  Mac/Linux-only, so use `_fmt_day()` in `gowild_deal_report.py` instead.
+
+### Scheduling on macOS (previous machine)
 - **launchd** job `com.frontier.dealcheck`, plist at
   `~/Library/LaunchAgents/com.frontier.dealcheck.plist` (tracked copy:
   `launchd/com.frontier.dealcheck.plist` — if paths change, edit the repo copy,
