@@ -160,13 +160,21 @@ ORIGINS = ["SFO", "SJC"]
 # Split by international vs domestic (CONUS) because they use different
 # booking windows in the scheduled deal checker:
 #   - Domestic (CONUS): check the NEXT day
-#   - International / non-CONUS: check 10 days out
+#   - International / non-CONUS: check 10, 7, and 4 days out
 # Verify current routes on flyfrontier.com.
 
 # International / non-CONUS (includes Puerto Rico territories)
 INTERNATIONAL_DESTINATIONS = {
     "CUN": "Cancun, MX",
     "PVR": "Puerto Vallarta, MX",
+    "SJD": "Los Cabos (San Jose del Cabo), MX",
+    # Frontier's booking site also sells Volaris codeshares. Search these for
+    # offered fares, but do not assume a bookable itinerary is GoWild eligible.
+    "MEX": "Mexico City, MX",
+    "GDL": "Guadalajara, MX",
+    "MDE": "Medellin, Colombia",
+    "BOG": "Bogota, Colombia",
+    "CTG": "Cartagena, Colombia",
     "GUA": "Guatemala City, GT",
     "SAL": "San Salvador, El Salvador",
     "SJO": "San Jose, Costa Rica",
@@ -177,6 +185,16 @@ INTERNATIONAL_DESTINATIONS = {
     "BQN": "Aguadilla, PR",
     "SJU": "San Juan, PR",
     "SXM": "St. Maarten",
+}
+
+# Announced first service dates (ISO dates); availability from the Bay Area
+# still depends on connections. The scheduled checker skips earlier travel dates.
+# Source (Sep 10, 2026; routes via MCO, subject to government approval):
+# https://news.flyfrontier.com/frontier-announces-major-international-expansion-with-first-ever-service-to-colombia/
+DESTINATION_SERVICE_STARTS = {
+    "MDE": "2026-12-10",
+    "BOG": "2026-12-14",
+    "CTG": "2026-12-19",
 }
 
 # Domestic (CONUS)

@@ -105,8 +105,14 @@ saves the report to `results/` but does not email.
 
 ## `config.py` — single source of truth
 - `ORIGINS` = ["SFO", "SJC"]
-- `INTERNATIONAL_DESTINATIONS` (12) and `DOMESTIC_DESTINATIONS` (16); `SFO_DIRECT_DESTINATIONS`
+- `INTERNATIONAL_DESTINATIONS` (18) and `DOMESTIC_DESTINATIONS` (16); `SFO_DIRECT_DESTINATIONS`
   is the combined dict used by the older single-shot scripts.
+- September 26 destination update: added SJD/MEX/GDL and MDE/BOG/CTG.
+  `DESTINATION_SERVICE_STARTS` prevents the scheduled checker from searching
+  Colombia before its December launch dates. These are search targets, not
+  guaranteed Bay Area connections or GoWild availability. Mexico codeshares
+  are not GoWild eligible; fare extraction still requires the GoWild flag and
+  a positive fare. Research and recovered probe results: `docs/DESTINATION_REVIEW_20260926.md`.
 - `GOWILD_BLACKOUT_DATES` (2025–2027). The 2026 list is complete per flyfrontier.com.
   Helper: `is_blackout_date("YYYY-MM-DD")`.
 

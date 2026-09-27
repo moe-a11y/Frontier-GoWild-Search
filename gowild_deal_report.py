@@ -42,6 +42,7 @@ import undetected_chromedriver as uc
 from bs4 import BeautifulSoup
 
 from config import (
+    DESTINATION_SERVICE_STARTS,
     DOMESTIC_DESTINATIONS,
     INTERNATIONAL_DESTINATIONS,
     ORIGINS,
@@ -431,6 +432,13 @@ def search_group(driver, destinations, target_dt, is_intl, blocked):
     consecutive_restarts = 0
     for origin in ORIGINS:
         for dest_code, dest_name in destinations.items():
+            service_start = DESTINATION_SERVICE_STARTS.get(dest_code)
+            if service_start and iso < service_start:
+                print(
+                    f"  {label} {origin}->{dest_code}: skipped "
+                    f"(service starts {service_start})"
+                )
+                continue
             if len(blocked) >= MAX_BLOCKED_ROUTES:
                 print(f"  {label} {origin}->{dest_code}: skipped (captcha limit reached)")
                 continue
