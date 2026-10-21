@@ -370,11 +370,11 @@ def fetch_calendars(trip_keys, self_connect, refresh=False):
         return fetch_calendar(driver, job["origin"], job["destination"], year, month,
                               evidence_dir=None, timeout=35)
 
-    # A calendar that never renders (or a 406) is usually a market Frontier
-    # doesn't sell: record it, don't retry it, don't count it as a block.
+    # no_service (an empty calendar), a calendar that never renders, or a 406
+    # is a market Frontier doesn't sell: record it, don't retry or count it.
     run_jobs(calendar_jobs(trip_keys, self_connect), CALENDARS, fetch,
-             ("origin", "destination", "month"), ("ok", "unverified", "http_error"),
-             ("blocked", "error"), refresh)
+             ("origin", "destination", "month"),
+             ("ok", "no_service", "unverified", "http_error"), ("blocked", "error"), refresh)
 
 
 def fetch_flights(jobs, refresh=False):

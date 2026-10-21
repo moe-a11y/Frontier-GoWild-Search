@@ -21,15 +21,28 @@ MONTHS = [(2026, 12), (2027, 2), (2027, 3)]
 CITIES = ("MDE", "BOG", "CTG")
 
 
-def parse_calendar(source, origin, dest, year, month):
-    soup = BeautifulSoup(source, "html.parser")
+def _calendar_config(soup):
     marker = 'nca.createObject("CalendarAndLowFareSelectSwitcher", '
-    config = None
     for tag in soup.find_all("script"):
         text = tag.string or ""
         if marker in text:
             config, _ = json.JSONDecoder().raw_decode(text.split(marker, 1)[1])
-            break
+            return config
+    return None
+
+
+def is_empty_calendar(source, origin, dest):
+    """True when the route's calendar page loaded with no day cells — what
+    Frontier serves for a market it doesn't sell (a served month has 28+)."""
+    soup = BeautifulSoup(source, "html.parser")
+    config = _calendar_config(soup)
+    return (bool(config) and config.get("origin") == origin and config.get("destination") == dest
+            and len(soup.select(".ibe-calendar-item")) < 10)
+
+
+def parse_calendar(source, origin, dest, year, month):
+    soup = BeautifulSoup(source, "html.parser")
+    config = _calendar_config(soup)
     if not config or config.get("origin") != origin or config.get("destination") != dest:
         return None
     selected = [x for x in soup.select(".ibe-flight-slider-box-selected") if x.get("data-key")]
@@ -60,6 +73,7 @@ def fetch_calendar(driver, origin, dest, year, month, evidence_dir=OUTPUT, timeo
                   checked_at=datetime.now().astimezone().isoformat(), url=url)
     driver.execute_cdp_cmd("Page.navigate", {"url": url})
     deadline = time.monotonic() + timeout
+    empty_polls = 0
     while time.monotonic() < deadline:
         time.sleep(2)
         source = driver.page_source
@@ -68,6 +82,10 @@ def fetch_calendar(driver, origin, dest, year, month, evidence_dir=OUTPUT, timeo
         if "HTTP ERROR 406" in source:
             return dict(record, status="http_error", days=[])
         days = parse_calendar(source, origin, dest, year, month)
+        if days is None:
+            empty_polls = empty_polls + 1 if is_empty_calendar(source, origin, dest) else 0
+            if empty_polls >= 3:
+                return dict(record, status="no_service", days=[])
         if days is not None:
             if evidence_dir is None:
                 return dict(record, status="ok", days=days)
