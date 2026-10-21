@@ -302,6 +302,24 @@ class ItineraryTests(unittest.TestCase):
         self.assertIn("Death Valley + Joshua Tree in one trip", report)
         self.assertIn("OAK/SFO ⇄ LAS in / ONT out", report)
 
+    def test_validation_covers_overall_picks_outside_the_lists(self):
+        # Six cheap Sat-Tue trips fill the top 5 by price; the Fri-Sun trip costs a
+        # bit more but needs no PTO, so it is the overall pick and must be re-checked.
+        cheap = []
+        for sat, tue in (("11-07", "11-10"), ("11-14", "11-17"), ("11-21", "11-24"),
+                         ("11-28", "12-01"), ("12-05", "12-08"), ("12-12", "12-15")):
+            cheap += [flight("SFO", "LAS", f"2026-{sat}T09:00:00", f"2026-{sat}T10:30:00", dd=20.0),
+                      flight("LAS", "SFO", f"2026-{tue}T19:00:00", f"2026-{tue}T20:30:00", dd=20.0)]
+        weekend = [flight("SFO", "LAS", "2026-11-06T18:30:00", "2026-11-06T20:00:00", dd=35.0),
+                   flight("LAS", "SFO", "2026-11-08T19:00:00", "2026-11-08T20:30:00", dd=35.0)]
+        items = tp.build_itineraries("desert", by_key(*cheap, *weekend), NOW)
+        per_trip, overall = tp.report_picks({"desert": items})
+        top = overall["top"][0]
+        self.assertEqual(("2026-11-06", 0), (top["leave"][:10], top["pto"]))
+        ids = lambda xs: {tp._itinerary_id(i) for i in xs}
+        self.assertNotIn(tp._itinerary_id(top), ids(per_trip["desert"]["couple"]))
+        self.assertIn(tp._itinerary_id(top), ids(tp.shown_items({"desert": items})))
+
     def test_both_on_discount_den_needs_two_seats(self):
         out_leg = flight("SFO", "SLC", "2026-11-21T11:20:00", "2026-11-21T14:16:00", dd=60.98)
         out_leg["discountDenFareSeatsRemaining"] = "1 Seat Left!"

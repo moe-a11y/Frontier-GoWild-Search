@@ -928,6 +928,27 @@ def _best_per_trip(items, n, key):
     return _distinct(sorted(items, key=key), n, key=lambda i: i["trip"])
 
 
+def report_picks(by_trip):
+    """Every list the report shows: ({trip: lists}, overall and solo picks).
+    The overall and solo picks are scored over all itineraries, not just the lists."""
+    per_trip, couples, solo_gw, solo_dd, pending = {}, [], [], [], []
+    score = lambda i: i["score"]
+    for key, items in by_trip.items():
+        ranked, combo = rank_trip(items), TRIPS[key].get("combo")
+        per_trip[key] = dict(ranked, dd_list=_distinct_trips(ranked["dd_target"] + ranked["dd"], 5),
+                             combo=_distinct_trips(sorted(combo_items(items, combo), key=score), 5)
+                             if combo else [])
+        couples += [i for i in items if i["category"] in ("Couple", "Couple DD")]
+        solo_gw += [i for i in items if i["category"] in ("GoWild", "GoWild + Discount Den")]
+        solo_dd += [i for i in items if i["category"] == "Discount Den"]
+        pending += ranked["pending"][:1]
+    top = _best_per_trip(couples, 3, score)
+    bets = _best_per_trip(pending, 3 - len(top), lambda i: (i["pto"], i["travel_hours"])) \
+        if len(top) < 3 else []
+    return per_trip, dict(top=top, bets=bets, solo_gw=_best_per_trip(solo_gw, 3, score),
+                          solo_dd=_best_per_trip(solo_dd, 3, score))
+
+
 def build_report(by_trip, coverage, now, validation=None, status=None):
     out = ["=" * 64, "FRONTIER TRIP PLANNER — BAY AREA ROUND TRIPS", "=" * 64,
            f"Generated {now.astimezone(ZoneInfo('America/Los_Angeles')):%Y-%m-%d %H:%M %Z}. "
@@ -951,9 +972,9 @@ def build_report(by_trip, coverage, now, validation=None, status=None):
            "shown). 'GoWild pending' trips show when each leg opens.",
            "For you, each flight uses the cheaper of GoWild and Discount Den. Overall and "
            "solo picks are scored across every itinerary found, not just the lists shown.", ""]
-    couples, solo_gw, solo_dd, pending = [], [], [], []
+    per_trip, overall = report_picks(by_trip)
     for key, items in by_trip.items():
-        trip, ranked = TRIPS[key], rank_trip(items)
+        trip, ranked = TRIPS[key], per_trip[key]
         out += ["", "#" * 64, f"{trip['title'].upper()}",
                 f"{trip['window'][0]} to {trip['window'][1]} · {trip['days'][0]}-{trip['days'][1]} days · "
                 f"via {', '.join(trip['gateways'])}", "#" * 64]
@@ -964,42 +985,33 @@ def build_report(by_trip, coverage, now, validation=None, status=None):
             combo = trip["combo"]
             out.append(f"\n{combo['title']} — for two, at least {combo['min_there']:g} days there "
                        "(top 5; ranked like the overall picks):")
-            out += _lines(_distinct_trips(sorted(combo_items(items, combo), key=_score), 5), now,
-                          "no combo itineraries found")
+            out += _lines(ranked["combo"], now, "no combo itineraries found")
         out.append("\nGoWild round trips for you (top 5; at least one GoWild flight, the cheaper "
                    "of GoWild/Discount Den on each):")
         out += _lines(ranked["gowild"], now, "no GoWild fares released yet for these dates — see the watch list")
         if status and status.get(key):
             out += ["Gateways: " + "; ".join(status[key])]
-        dd = _distinct_trips(ranked["dd_target"] + ranked["dd"], 5)
         n_dd = sum(i["category"] == "Discount Den" and i["total"] < DD_TARGET for i in items)
         out.append(f"\nDiscount Den round trips (top 5; ★ = under ${DD_TARGET}; {n_dd} date/airport "
                    f"combinations under ${DD_TARGET} found):")
-        out += _lines(dd, now, "no Discount Den round trips found")
+        out += _lines(ranked["dd_list"], now, "no Discount Den round trips found")
         if ranked["pending"]:
             out.append("\nGoWild watch list (best schedules; GoWild not released yet):")
             out += _lines(ranked["pending"], now, "")
-        couples += [i for i in items if i["category"] in ("Couple", "Couple DD")]
-        solo_gw += [i for i in items if i["category"] in ("GoWild", "GoWild + Discount Den")]
-        solo_dd += [i for i in items if i["category"] == "Discount Den"]
-        pending += ranked["pending"][:1]
 
     title = lambda i: f" · {TRIPS[i['trip']]['title']}"
-    score = lambda i: i["score"]
     out += ["", "=" * 64, "OVERALL TOP 3 — THE PERFECT TRIP FOR TWO", "=" * 64,
             f"Score = price + ${SCORE_PTO}/PTO day + ${SCORE_HOUR}/hour of travel "
             f"+ ${SCORE_SELF_CONNECT} separate tickets + ${SCORE_OPEN_JAW} open-jaw; "
             "best trip per destination."]
-    top = _best_per_trip(couples, 3, score)
-    out += _lines(top, now, "no priced trips for two yet", title)
-    if len(top) < 3 and pending:
+    out += _lines(overall["top"], now, "no priced trips for two yet", title)
+    if overall["bets"]:
         out.append("\nBest GoWild bets still to be released (watch these):")
-        out += _lines(_best_per_trip(pending, 3 - len(top), lambda i: (i["pto"], i["travel_hours"])),
-                      now, "", title)
+        out += _lines(overall["bets"], now, "", title)
     out += ["", "BEST SOLO PICKS — GoWild just for you:"]
-    out += _lines(_best_per_trip(solo_gw, 3, score), now, "none released yet", title)
+    out += _lines(overall["solo_gw"], now, "none released yet", title)
     out += ["", f"BEST SOLO PICKS — Discount Den + your ${VOUCHER} voucher:"]
-    out += _lines(_best_per_trip(solo_dd, 3, score), now, "none found", title)
+    out += _lines(overall["solo_dd"], now, "none found", title)
 
     if validation:
         out += ["", "-" * 64, "VALIDATION (final review)"] + validation
@@ -1095,11 +1107,11 @@ def _itinerary_id(i):
 
 
 def shown_items(by_trip):
-    """Every itinerary the report can list, overall picks included."""
-    shown = []
-    for items in by_trip.values():
-        r = rank_trip(items)
-        shown += r["couple"] + r["gowild"] + r["dd_target"] + r["dd"] + r["pending"]
+    """Every itinerary the report lists, overall and solo picks included."""
+    per_trip, overall = report_picks(by_trip)
+    shown = [i for lists in per_trip.values()
+             for name in ("couple", "combo", "gowild", "dd_list", "pending") for i in lists[name]]
+    shown += [i for picks in overall.values() for i in picks]
     return _distinct(shown, len(shown), key=_itinerary_id)
 
 
