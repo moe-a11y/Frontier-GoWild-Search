@@ -140,8 +140,10 @@ class ItineraryTests(unittest.TestCase):
         self.assertEqual({"Discount Den", "GoWild pending"}, cats)
         report = tp.build_report({"puerto_rico": items}, ["Coverage: test"], NOW)
         self.assertIn("GoWild opens Tue Oct 27 (SFO midnight)", report)
-        self.assertIn("Cheapest Discount Den round trips found", report)
-        self.assertIn("OVERALL TOP 3", report)
+        self.assertIn("Discount Den round trips (top 5; ★ = under $150; 0 under $150 found)", report)
+        self.assertIn("Solo with your $100 voucher: ≈$90.00", report)  # $45/leg PR tax estimate
+        self.assertIn("OVERALL TOP 3 — THE PERFECT TRIP FOR TWO", report)
+        self.assertIn("Best GoWild bets still to be released", report)
 
     def desert_trip(self, back_gw=15.0):
         return by_key(
@@ -197,6 +199,43 @@ class ItineraryTests(unittest.TestCase):
         self.assertIn("$29.00 → $34.00", report)
         self.assertIn("all passed.", report)
         self.assertIn("$34.00 GoWild", report)
+
+    def test_couple_and_voucher(self):
+        items = tp.build_itineraries("desert", self.desert_trip(), NOW)
+        couple = next(i for i in items if i["category"] == "Couple")
+        # Partner DD $49 + $59; est. base = (fare - $15.40 domestic taxes) / 1.075 each.
+        self.assertEqual(71.81, couple["voucher"])
+        self.assertEqual(29.0, couple["user_total"])
+        self.assertEqual(round(29 + 108 - 71.81, 2), couple["total"])
+        self.assertEqual([], tp.rule_problems(couple))
+        self.assertEqual(couple["total"], tp.reprice(couple, self.desert_trip(), NOW))
+        dd = next(i for i in items if i["category"] == "Discount Den")
+        self.assertAlmostEqual(108 - 71.81, tp._effective(dd))
+        # The voucher caps at $100, and with separate tickets only the largest ticket counts.
+        big = flight("SFO", "SLC", "2026-11-06T09:00:00", "2026-11-06T11:45:00", dd=300.0)
+        self.assertEqual(100, tp._voucher([big, big], [300.0, 300.0], False))
+        small = flight("SFO", "DEN", "2026-11-06T09:00:00", "2026-11-06T11:45:00", dd=40.0)
+        self.assertEqual(round((40 - 15.40) / 1.075, 2), tp._voucher([small, small], [40.0, 40.0], True))
+
+    def test_prune_keeps_every_winner(self):
+        from unittest.mock import patch
+        fares_out = [(None, 23.0), (79.0, 49.0), (98.99, None), (59.0, 102.98), (None, 66.0)]
+        fares_back = [(None, 19.0), (79.0, None), (59.0, 54.0), (None, 88.0)]
+        flights = []
+        for day in ("2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"):
+            for n, h in enumerate(range(6, 23, 2)):
+                for gw in ("LAS", "ONT"):
+                    g, d = fares_out[(n + len(gw)) % len(fares_out)]
+                    flights.append(flight("SFO", gw, f"{day}T{h:02d}:00:00", f"{day}T{h+1:02d}:30:00", gw=g, dd=d))
+                    g, d = fares_back[(n * 3 + len(day)) % len(fares_back)]
+                    flights.append(flight(gw, "SFO", f"{day}T{h:02d}:15:00", f"{day}T{h+1:02d}:45:00", gw=g, dd=d))
+        data = by_key(*flights)
+        key = lambda i: (i["category"], i["leave"][:10], i["home_arrival"][:10], i["gateway_in"], i["gateway_out"])
+        pruned = {key(i): round(tp._value(i), 2) for i in tp.build_itineraries("desert", data, NOW)}
+        with patch.object(tp, "_prune", lambda ways, now, keep=3: ways):
+            full = {key(i): round(tp._value(i), 2) for i in tp.build_itineraries("desert", data, NOW)}
+        self.assertTrue(full)
+        self.assertEqual(full, pruned)
 
     def test_watch_due(self):
         jobs = [dict(origin="SFO", destination="SJU", date="2026-10-30"),
