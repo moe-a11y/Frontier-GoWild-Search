@@ -153,7 +153,8 @@ undetected-chromedriver.
   **GoWild sweep** (exact page for every valid leave/return date on every served Bay Area
   route — GoWild, incl. early-booking releases, never shows on calendars). Report ranks
   **trips for two** (user on GoWild + partner on Discount Den on the same flights, or both
-  on Discount Den on one booking), solo GoWild, and solo Discount Den + voucher. The $100
+  on Discount Den on one booking), solo GoWild, and solo Discount Den + voucher (the desert
+  trip also lists **Death Valley + Joshua Tree combos**: LAS one way, ONT/PSP the other). The $100
   voucher is non-transferable (Frontier FAQ): it only covers the holder's own estimated base
   fare, on one booking, once — never the partner's fare or a GoWild ($0.01 base) ticket.
   GoWild for weeks-out dates isn't released yet, so run `watch` **daily during the trip

@@ -285,6 +285,23 @@ class ItineraryTests(unittest.TestCase):
         self.assertEqual(204.72, couple["user_total"])
         self.assertEqual(couple["total"], tp.reprice(couple, flights, NOW))
 
+    def test_death_valley_joshua_tree_combo(self):
+        flights = by_key(
+            flight("OAK", "LAS", "2026-11-26T15:58:00", "2026-11-26T17:34:00", dd=27.98),
+            flight("ONT", "SFO", "2026-11-30T20:31:00", "2026-11-30T22:04:00", dd=72.98),
+            # A Fri-Sun trip is too short for both parks.
+            flight("SFO", "LAS", "2026-11-06T18:30:00", "2026-11-06T20:00:00", gw=14.0, dd=49.0),
+            flight("PSP", "SFO", "2026-11-08T19:00:00", "2026-11-08T20:30:00", gw=15.0, dd=59.0),
+        )
+        items = tp.build_itineraries("desert", flights, NOW)
+        combo = tp.combo_items(items, tp.TRIPS["desert"]["combo"])
+        # Only the Thanksgiving trip has enough time on the ground for both parks.
+        self.assertEqual({("2026-11-26", "LAS", "ONT")},
+                         {(i["leave"][:10], i["gateway_in"], i["gateway_out"]) for i in combo})
+        report = tp.build_report({"desert": items}, ["Coverage: test"], NOW)
+        self.assertIn("Death Valley + Joshua Tree in one trip", report)
+        self.assertIn("OAK/SFO ⇄ LAS in / ONT out", report)
+
     def test_both_on_discount_den_needs_two_seats(self):
         out_leg = flight("SFO", "SLC", "2026-11-21T11:20:00", "2026-11-21T14:16:00", dd=60.98)
         out_leg["discountDenFareSeatsRemaining"] = "1 Seat Left!"

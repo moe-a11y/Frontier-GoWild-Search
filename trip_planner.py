@@ -81,6 +81,10 @@ TRIPS = {
         # (~4h drive between the parks; one-way car hire usually has a drop fee).
         groups=[("LAS", "PSP", "ONT", "BUR", "LAX")],
         window=WINDOW_NOV_DEC, days=(3, 5), hubs=("DEN",),
+        # Both parks in one trip needs time on the ground, so it gets its own list.
+        combo=dict(title="Death Valley + Joshua Tree in one trip (Las Vegas one way, "
+                         "Ontario/Palm Springs the other; ~4-5 h drive between the parks)",
+                   pairs=(("LAS", "ONT"), ("LAS", "PSP")), min_there=2.8),
     ),
     "puerto_rico": dict(
         title="Puerto Rico",
@@ -838,6 +842,14 @@ def rank_trip(items):
                 pending=_distinct_trips(pending, 5))
 
 
+def combo_items(items, combo):
+    """Trips for two that fly into one of a combo's airports and out of the other."""
+    pairs = [set(p) for p in combo["pairs"]]
+    return [i for i in items if i["category"] in ("Couple", "Couple DD")
+            and {i["gateway_in"], i["gateway_out"]} in pairs
+            and i.get("ground_days", 0) >= combo["min_there"]]
+
+
 def _flight_lines(label, flights, fares, now):
     lines = []
     for f, (price, kind) in zip(flights, fares):
@@ -948,6 +960,12 @@ def build_report(by_trip, coverage, now, validation=None, status=None):
         out.append(f"\nFor two — you on GoWild + partner on Discount Den, or both on Discount Den; "
                    f"${VOUCHER} voucher applied (top 5):")
         out += _lines(ranked["couple"], now, "no GoWild fares released yet for these dates — see the watch list")
+        if trip.get("combo"):
+            combo = trip["combo"]
+            out.append(f"\n{combo['title']} — for two, at least {combo['min_there']:g} days there "
+                       "(top 5; ranked like the overall picks):")
+            out += _lines(_distinct_trips(sorted(combo_items(items, combo), key=_score), 5), now,
+                          "no combo itineraries found")
         out.append("\nGoWild round trips for you (top 5; at least one GoWild flight, the cheaper "
                    "of GoWild/Discount Den on each):")
         out += _lines(ranked["gowild"], now, "no GoWild fares released yet for these dates — see the watch list")
