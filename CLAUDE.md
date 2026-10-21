@@ -128,7 +128,8 @@ disabling uc's patch step (`uc.Patcher.auto = no-op`). Python is system `/usr/bi
 Frontier's booking API is protected by **PerimeterX**. Plain `requests`/`curl_cffi` get
 403/CAPTCHA (see `docs/PERIMETERX_ISSUE.md`, `docs/CRITICAL_FINDING.md`). Only a real
 (undetected) browser that executes JS gets through. That's why the deal checker uses
-undetected-chromedriver.
+undetected-chromedriver. Once a tab has loaded a normal booking page, `fetch()`-ing flight pages and Frontier's
+calendar/schedule JSON endpoints from inside it is ~5x faster than rendering — see `docs/FAST_FETCH.md`.
 
 ## Other scripts (older / secondary)
 - `gowild_WORKING.py` — interactive browser search from SFO+SJC for tomorrow; manual
