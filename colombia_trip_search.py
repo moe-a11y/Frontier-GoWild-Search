@@ -51,23 +51,28 @@ def parse_calendar(source, origin, dest, year, month):
     return days
 
 
-def fetch_calendar(driver, origin, dest, year, month):
+def fetch_calendar(driver, origin, dest, year, month, evidence_dir=OUTPUT, timeout=45):
+    """Fetch one route-month calendar. Pass evidence_dir=None to skip saving the page."""
     url = "https://booking.flyfrontier.com/Flight/InternalSelect?" + urlencode(
         dict(o1=origin, d1=dest, dd1=f"{year}-{month:02d}-15", ADT=1, mon="true", promo="", c="true")
     )
     record = dict(origin=origin, destination=dest, month=f"{year}-{month:02d}",
                   checked_at=datetime.now().astimezone().isoformat(), url=url)
     driver.execute_cdp_cmd("Page.navigate", {"url": url})
-    deadline = time.monotonic() + 45
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         time.sleep(2)
         source = driver.page_source
-        if "HTTP ERROR 406" in source or "px-captcha" in source:
+        if "px-captcha" in source:
             return dict(record, status="blocked", days=[])
+        if "HTTP ERROR 406" in source:
+            return dict(record, status="http_error", days=[])
         days = parse_calendar(source, origin, dest, year, month)
         if days is not None:
+            if evidence_dir is None:
+                return dict(record, status="ok", days=days)
             name = f"calendar_{origin}_{dest}_{year}_{month:02d}.html"
-            (OUTPUT / name).write_text(source)
+            (evidence_dir / name).write_text(source)
             return dict(record, status="ok", days=days, evidence=name)
     return dict(record, status="unverified", days=[], title=driver.title)
 

@@ -141,6 +141,16 @@ undetected-chromedriver.
   its own launchd job `com.frontier.bufwatch` (`launchd/com.frontier.bufwatch.plist`).
   No-ops after 2026-09-17; unload and delete the installed plist once it's over.
 - `colombia_*.py` — read-only Colombia (via MCO) trip searches; data in `results/colombia_*/`.
+- `trip_planner.py` — **ad-hoc multi-trip round-trip planner** (Oct 2026 request: Death
+  Valley/Joshua Tree, Puerto Rico, New Orleans, Key West, Park City, Central America/
+  Caribbean/Colombia). Every trip spans a full Sat+Sun; per-trip windows/lengths in `TRIPS`.
+  Origins SFO/SJC/OAK (Frontier back at OAK since Aug 20, 2026), open-jaw within gateway
+  groups, Frontier through-tickets **plus separate-ticket self-connections via hubs**.
+  Phases: `plan` → `calendars` (month low-fare calendars, ~1,000 pages ≈ 4 h, resumable)
+  → `screen` → `flights` (exact pages for the shortlist) → `report` (+email); `all` runs them.
+  GoWild for weeks-out dates isn't released yet, so run `watch` **daily during the trip
+  window**: it re-checks shortlisted legs whose GoWild window is open and emails only when a
+  new GoWild round trip appears. Data in `results/trip_planner/`. Tests: `tests/test_trip_planner.py`.
 - `gowild_fast.py`, `gowild_fast_bypass.py`, `roundtrip_fast.py`, `roundtrip_search.py` —
   `requests`/`curl_cffi` experiments; **blocked by PerimeterX** in practice. The two
   `roundtrip_fast`/`roundtrip_search` scripts reuse `gowild_fast`.

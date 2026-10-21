@@ -32,6 +32,7 @@ results/roundtrip_report_*.txt
 results/bufwatch_*.txt
 results/bufwatch_last.json
 results/colombia_*/
+results/trip_planner/
 
 # Claude Code personal settings
 .claude/settings.local.json
