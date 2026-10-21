@@ -118,8 +118,10 @@ class ItineraryTests(unittest.TestCase):
         cats = {i["category"]: i for i in items}
         self.assertEqual(172.99, cats["GoWild"]["total"])
         self.assertEqual(85.0, cats["Discount Den"]["total"])
-        report = tp.build_report({"park_city": items}, ["x"], NOW)
-        self.assertIn("$158.99 GoWild (blackout date: incl. Peak Day Charge)", report)
+        lines = "\n".join(tp._trip_lines(1, cats["GoWild"], NOW))
+        self.assertIn("$158.99 GoWild (blackout date: incl. Peak Day Charge)", lines)
+        # For you, the cheaper fare per flight wins: Discount Den home on the peak day.
+        self.assertEqual(59.0, cats["GoWild + Discount Den"]["total"])
 
     def test_self_connect_needs_connection_time(self):
         out_leg = flight("SFO", "DEN", "2026-11-06T06:00:00", "2026-11-06T09:30:00", dd=30.0)
@@ -143,7 +145,8 @@ class ItineraryTests(unittest.TestCase):
         self.assertEqual({"Discount Den", "Couple DD", "GoWild pending"}, cats)
         report = tp.build_report({"puerto_rico": items}, ["Coverage: test"], NOW)
         self.assertIn("GoWild opens Tue Oct 27 (SFO midnight)", report)
-        self.assertIn("Discount Den round trips (top 5; ★ = under $150; 0 under $150 found)", report)
+        self.assertIn("Discount Den round trips (top 5; ★ = under $150; 0 date/airport combinations "
+                      "under $150 found)", report)
         self.assertIn("Solo with your $100 voucher: ≈$90.00", report)  # $45/leg PR tax estimate
         self.assertIn("OVERALL TOP 3 — THE PERFECT TRIP FOR TWO", report)
         self.assertIn("Best GoWild bets still to be released", report)
@@ -258,6 +261,17 @@ class ItineraryTests(unittest.TestCase):
             full = {key(i): round(tp._value(i), 2) for i in tp.build_itineraries("desert", data, NOW)}
         self.assertTrue(full)
         self.assertEqual(full, pruned)
+
+    def test_both_on_discount_den_needs_two_seats(self):
+        out_leg = flight("SFO", "SLC", "2026-11-21T11:20:00", "2026-11-21T14:16:00", dd=60.98)
+        out_leg["discountDenFareSeatsRemaining"] = "1 Seat Left!"
+        back = flight("SLC", "SFO", "2026-11-24T13:30:00", "2026-11-24T14:56:00", dd=86.98)
+        cats = {i["category"] for i in tp.build_itineraries("park_city", by_key(out_leg, back), NOW)}
+        self.assertIn("Discount Den", cats)       # one traveller can still book it
+        self.assertNotIn("Couple DD", cats)       # two can't at that fare
+        out_leg["discountDenFareSeatsRemaining"] = "3 Seats Left!"
+        cats = {i["category"] for i in tp.build_itineraries("park_city", by_key(out_leg, back), NOW)}
+        self.assertIn("Couple DD", cats)
 
     def test_watch_due(self):
         jobs = [dict(origin="SFO", destination="SJU", date="2026-10-30"),
