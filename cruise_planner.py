@@ -480,7 +480,8 @@ def make_report(now=None, validate_fetch=None):
         now = datetime.now(timezone.utc)
         cands, packages, no_flights = build_packages(now)
         validation = validation_lines(shown, len(legs), packages)
-    coverage = [f"Ticker deals: {len(load_deals())}; Nov–Dec, <= {MAX_NIGHTS} nights, reachable ports: {len(cands)}",
+    coverage = [f"Deals (VacationsToGo ticker + cruise-line sites): {len(load_deals())}; Nov–Dec, "
+                f"<= {MAX_NIGHTS} nights, reachable ports: {len(cands)}",
                 f"Deal pages with cabin prices: {sum(bool(c.get('rates')) for c in cands)} of {len(cands)}; "
                 f"cruises with a valid flight plan: {len(packages)}",
                 f"Without one (no Frontier flights that fit): {len(no_flights)}"
