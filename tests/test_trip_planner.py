@@ -108,15 +108,18 @@ class ItineraryTests(unittest.TestCase):
         self.assertEqual(["GoWild"], [i["category"] for i in ranked["gowild"]])
         self.assertEqual([108.0], [i["total"] for i in ranked["dd_target"]])
 
-    def test_blackout_drops_gowild_only(self):
+    def test_blackout_gowild_kept_with_peak_label(self):
+        # Frontier sells GoWild on blackout dates with a Peak Day Charge (in the fare).
         flights = by_key(
             flight("SFO", "SLC", "2026-11-26T09:00:00", "2026-11-26T11:45:00", gw=14.0, dd=40.0),
-            flight("SLC", "SFO", "2026-11-29T18:00:00", "2026-11-29T19:00:00", gw=14.0, dd=45.0),
+            flight("SLC", "SFO", "2026-11-29T18:00:00", "2026-11-29T19:00:00", gw=158.99, dd=45.0),
         )
-        cats = {i["category"]: i for i in tp.build_itineraries("park_city", flights, NOW)}
-        self.assertNotIn("GoWild", cats)               # Nov 29 is a blackout
-        self.assertEqual(59.0, cats["GoWild + Discount Den"]["total"])
+        items = tp.build_itineraries("park_city", flights, NOW)
+        cats = {i["category"]: i for i in items}
+        self.assertEqual(172.99, cats["GoWild"]["total"])
         self.assertEqual(85.0, cats["Discount Den"]["total"])
+        report = tp.build_report({"park_city": items}, ["x"], NOW)
+        self.assertIn("$158.99 GoWild (blackout date: incl. Peak Day Charge)", report)
 
     def test_self_connect_needs_connection_time(self):
         out_leg = flight("SFO", "DEN", "2026-11-06T06:00:00", "2026-11-06T09:30:00", dd=30.0)
@@ -137,13 +140,15 @@ class ItineraryTests(unittest.TestCase):
         )
         items = tp.build_itineraries("puerto_rico", flights, NOW)
         cats = {i["category"] for i in items}
-        self.assertEqual({"Discount Den", "GoWild pending"}, cats)
+        self.assertEqual({"Discount Den", "Couple DD", "GoWild pending"}, cats)
         report = tp.build_report({"puerto_rico": items}, ["Coverage: test"], NOW)
         self.assertIn("GoWild opens Tue Oct 27 (SFO midnight)", report)
         self.assertIn("Discount Den round trips (top 5; ★ = under $150; 0 under $150 found)", report)
         self.assertIn("Solo with your $100 voucher: ≈$90.00", report)  # $45/leg PR tax estimate
         self.assertIn("OVERALL TOP 3 — THE PERFECT TRIP FOR TWO", report)
         self.assertIn("Best GoWild bets still to be released", report)
+        # No GoWild yet, so the trip for two is both of you on Discount Den: 2 x $188 - $100.
+        self.assertIn("$276.00 for two (both Discount Den, one booking)", report)
 
     def desert_trip(self, back_gw=15.0):
         return by_key(
@@ -211,6 +216,14 @@ class ItineraryTests(unittest.TestCase):
         self.assertEqual(couple["total"], tp.reprice(couple, self.desert_trip(), NOW))
         dd = next(i for i in items if i["category"] == "Discount Den")
         self.assertAlmostEqual(108 - 71.81, tp._effective(dd))
+        # Both on Discount Den on one booking: the voucher covers both base fares (capped).
+        both = next(i for i in items if i["category"] == "Couple DD")
+        self.assertEqual(100, both["voucher"])
+        self.assertEqual(2 * 108 - 100, both["total"])
+        self.assertEqual([], tp.rule_problems(both))
+        self.assertEqual(both["total"], tp.reprice(both, self.desert_trip(), NOW))
+        # Same dates and airports: the list keeps the cheaper way for two (GoWild here).
+        self.assertEqual(["Couple"], [i["category"] for i in tp.rank_trip(items)["couple"]])
         # The voucher caps at $100, and with separate tickets only the largest ticket counts.
         big = flight("SFO", "SLC", "2026-11-06T09:00:00", "2026-11-06T11:45:00", dd=300.0)
         self.assertEqual(100, tp._voucher([big, big], [300.0, 300.0], False))

@@ -33,7 +33,9 @@ for a trip weeks away can't be seen yet: the report lists each shortlisted
 trip's opening dates, and `watch` picks fares up as they are released (early
 booking fares Frontier offers on select flights are reported whenever seen).
 Calendar prices are rounded screening prices; reported totals come only from
-exact flight pages. GoWild is dropped on blackout dates; Discount Den is not.
+exact flight pages. On GoWild blackout dates Frontier still sells GoWild seats with
+a Peak Day Charge ($79-$159, Fall/Winter 2026 pass terms); those fares are kept and
+labelled. Trips for two also cover both travellers on Discount Den on one booking.
 
     python3 trip_planner.py plan
     python3 trip_planner.py all [--trips desert,puerto_rico] [--no-email]
@@ -593,11 +595,10 @@ def _ways(flights_by, origin, dest, day, hubs, outbound):
 
 
 def _price_flight(f, now):
-    """(gowild, discount_den, gowild_pending) for one flight."""
+    """(gowild, discount_den, gowild_pending) for one flight. A GoWild fare on a
+    blackout date includes Frontier's Peak Day Charge; it is kept (and labelled)."""
     o, d = _ends(f)
     day = _local(f).date()
-    if is_blackout_date(day.isoformat()):
-        return None, fare(f, "Discount Den"), False
     gw = fare(f, "GoWild")
     return gw, fare(f, "Discount Den"), gw is None and not gowild_window_open(o, d, day, now)
 
@@ -760,6 +761,11 @@ def _add_itinerary(best, trip_key, origin, g_in, g_out, home, out, back, now):
     entries = []
     for category, (total, fares) in _price(flights, now).items():
         entries.append(dict(common, category=category, total=total, fares=fares))
+        if category == "Discount Den":
+            voucher = _voucher(flights, [2 * p for p, _ in fares], self_connect)
+            entries.append(dict(common, category="Couple DD", fares=fares, user_total=total,
+                                user_category=category, voucher=voucher,
+                                total=round(2 * total - voucher, 2)))
         # You on GoWild, your partner on Discount Den on the same flights,
         # their base fare reduced by the voucher.
         if category in ("GoWild", "GoWild + Discount Den") and partner_total is not None:
@@ -807,7 +813,7 @@ def rank_trip(items):
     dd = pick("Discount Den")
     pending = sorted((i for i in items if i["category"] == "GoWild pending"),
                      key=lambda i: (i["pto"], i["travel_hours"], i["stops"]))
-    return dict(couple=_distinct_trips(pick("Couple"), 5),
+    return dict(couple=_distinct_trips(pick("Couple", "Couple DD"), 5),
                 gowild=_distinct_trips(gowild, 5),
                 dd_target=_distinct_trips([i for i in dd if i["total"] < DD_TARGET], 5),
                 dd=_distinct_trips(dd, 5),
@@ -827,7 +833,9 @@ def _flight_lines(label, flights, fares, now):
             cost = f"GoWild opens {_fmt(opens)} ({o} midnight)"
         else:
             cost = f"${price:.2f} {kind}"
-            if kind == "GoWild" and not gowild_window_open(o, d, dep.date(), now):
+            if kind == "GoWild" and is_blackout_date(dep.date().isoformat()):
+                cost += " (blackout date: incl. Peak Day Charge)"
+            elif kind == "GoWild" and not gowild_window_open(o, d, dep.date(), now):
                 cost += " (early-booking release; fee may apply)"
         arr_note = "" if arr.date() == dep.date() else f" (+{(arr.date() - dep.date()).days}d)"
         lines.append(f"      {label} {_fmt(dep)} {stations} {dep:%H:%M}→{arr:%H:%M}{arr_note} "
@@ -845,7 +853,8 @@ def _trip_lines(rank, i, now, tag=""):
     homes = i["origin"] if i["origin"] == i["home"] else f"{i['origin']}/{i['home']}"
     price = "GoWild TBD" if i["category"] == "GoWild pending" and not i["total"] else \
         f"${i['total']:.2f}" + (" so far" if i["category"] == "GoWild pending" else "")
-    label = "for two (you GoWild + partner)" if i["category"] == "Couple" else i["category"]
+    label = {"Couple": "for two (you GoWild + partner)",
+             "Couple DD": "for two (both Discount Den, one booking)"}.get(i["category"], i["category"])
     head = (f"{rank:>3}. {price} {label}{tag} — {homes} ⇄ {gws} ({route_in}) | "
             f"{_fmt(leave)} → {_fmt(home)} · {i['days']} days · est. PTO {i['pto']}")
     extras = []
@@ -857,7 +866,13 @@ def _trip_lines(rank, i, now, tag=""):
         extras.append("nonstop both ways")
     lines = [head + (f"  [{'; '.join(extras)}]" if extras else "")]
     partner, voucher = i.get("partner_total"), i.get("voucher", 0)
-    if i["category"] == "Couple":
+    if i["category"] == "Couple DD":
+        few = [_seats_left(f.get("discountDenFareSeatsRemaining")) for f in i["out"] + i["back"]]
+        few = min((n for n in few if n is not None), default=None)
+        lines.append(f"      Both of you: 2 × ${i['user_total']:.2f} Discount Den − ${voucher:.2f} voucher "
+                     "on both base fares (est.)"
+                     + (f"  ⚠️ only {few} seat{'s' if few > 1 else ''} left at this fare" if few is not None and few < 2 else ""))
+    elif i["category"] == "Couple":
         lines.append(f"      You ${i['user_total']:.2f} {i['user_category']} + partner ${partner:.2f} Discount Den "
                      f"− ${voucher:.2f} voucher on their base fare (est.)")
     elif i["category"] == "Discount Den":
@@ -890,7 +905,8 @@ def build_report(by_trip, coverage, now, validation=None):
            "assumes Thanksgiving Thu/Fri, Dec 25, Jan 1, MLK and Presidents' Day off, "
            "and no PTO for a weekday departure at/after 17:00.",
            "For two = you on GoWild + your partner on Discount Den on the SAME flights "
-           f"(a separate booking), with the ${VOUCHER} voucher on their base fare. Frontier "
+           f"(a separate booking), with the ${VOUCHER} voucher on their base fare — or both of "
+           "you on Discount Den on one booking, the voucher covering both base fares. Frontier "
            "quotes totals only, so the voucher's base-fare share is estimated (domestic: "
            "US tax formula; Puerto Rico/USVI ~$45, international ~$85 taxes per one-way).",
            f"Lists are ranked by price + ${SCORE_HOUR}/hour of travel, so a much longer "
@@ -905,7 +921,8 @@ def build_report(by_trip, coverage, now, validation=None):
         out += ["", "#" * 64, f"{trip['title'].upper()}",
                 f"{trip['window'][0]} to {trip['window'][1]} · {trip['days'][0]}-{trip['days'][1]} days · "
                 f"via {', '.join(trip['gateways'])}", "#" * 64]
-        out.append(f"\nFor two — you on GoWild + partner on Discount Den with the ${VOUCHER} voucher (top 5):")
+        out.append(f"\nFor two — you on GoWild + partner on Discount Den, or both on Discount Den; "
+                   f"${VOUCHER} voucher applied (top 5):")
         out += _lines(ranked["couple"], now, "no GoWild fares released yet for these dates — see the watch list")
         out.append("\nGoWild round trips for you (top 5; all-GoWild first, then GoWild + Discount Den):")
         out += _lines(ranked["gowild"], now, "no GoWild fares released yet for these dates — see the watch list")
@@ -928,7 +945,7 @@ def build_report(by_trip, coverage, now, validation=None):
             f"+ ${SCORE_SELF_CONNECT} separate tickets + ${SCORE_OPEN_JAW} open-jaw; "
             "best trip per destination."]
     top = _best_per_trip(couples, 3, score)
-    out += _lines(top, now, "no priced GoWild trips for two yet", title)
+    out += _lines(top, now, "no priced trips for two yet", title)
     if len(top) < 3 and pending:
         out.append("\nBest GoWild bets still to be released (watch these):")
         out += _lines(_best_per_trip(pending, 3 - len(top), lambda i: (i["pto"], i["travel_hours"])),
@@ -950,7 +967,8 @@ def build_report(by_trip, coverage, now, validation=None):
 
 
 def coverage_lines(trip_keys, flights_by_status, cal_records, n_items):
-    cal = Counter(r["status"] for r in cal_records)
+    latest = {(r["origin"], r["destination"], r["month"]): r["status"] for r in cal_records}
+    cal = Counter(latest.values())
     lines = [f"Trips: {', '.join(TRIPS[k]['title'] for k in trip_keys)}",
              f"Bay Area origins: {', '.join(BAY_AREA)}; open-jaw home allowed",
              "Calendar pages: " + (", ".join(f"{v} {k}" for k, v in sorted(cal.items())) or "none"),
@@ -1015,6 +1033,11 @@ def reprice(item, flights_by, now):
             return None
         fresh.append(match[0])
     priced = _price(fresh, now)
+    if item["category"] == "Couple DD":
+        dd = priced.get("Discount Den")
+        if not dd:
+            return None
+        return round(2 * dd[0] - _voucher(fresh, [2 * p for p, _ in dd[1]], item["self_connect"]), 2)
     if item["category"] == "Couple":
         user = priced.get("GoWild") or priced.get("GoWild + Discount Den")
         partner = [_cash(f) for f in fresh]
@@ -1061,8 +1084,6 @@ def rule_problems(item):
     if any(boundary(b) <= boundary(a, True) for a, b in zip(flights, flights[1:])):
         problems.append("flights out of order")
     for f, (price, kind) in zip(flights, item["fares"]):
-        if kind == "GoWild" and price is not None and is_blackout_date(_local(f).date().isoformat()):
-            problems.append(f"GoWild on blackout date {_local(f).date()}")
         if price is not None and price <= 0:
             problems.append("non-positive fare")
     if abs(sum(p for p, _ in item["fares"] if p is not None) - item.get("user_total", item["total"])) > 0.01:
@@ -1100,7 +1121,7 @@ def validation_lines(shown, n_legs, built, now):
     final = shown_items(by_trip)
     problems = [(i, p) for i in final for p in rule_problems(i)]
     lines.append(f"Rule checks on all {len(final)} listed itineraries (window, length, full weekend, "
-                 "routing, connection times, blackout dates, totals): "
+                 "routing, connection times, totals): "
                  + ("all passed." if not problems else f"{len(problems)} problem(s):"))
     lines += [f"  ✖  {_short(i)}: {p}" for i, p in problems]
     return lines
