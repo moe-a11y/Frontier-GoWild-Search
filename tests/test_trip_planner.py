@@ -262,6 +262,18 @@ class ItineraryTests(unittest.TestCase):
         self.assertTrue(full)
         self.assertEqual(full, pruned)
 
+    def test_reprice_couple_keeps_your_fare_mix(self):
+        # GoWild on both flights, but Discount Den is cheaper outbound: you pay the mix.
+        flights = by_key(
+            flight("SFO", "MIA", "2026-11-14T12:20:00", "2026-11-15T00:44:00", gw=152.36, dd=132.36),
+            flight("MIA", "SFO", "2026-11-17T05:50:00", "2026-11-17T11:17:00", gw=72.36, dd=132.36),
+        )
+        items = tp.build_itineraries("key_west", flights, NOW)
+        couple = min((i for i in items if i["category"] == "Couple"), key=lambda i: i["total"])
+        self.assertEqual("GoWild + Discount Den", couple["user_category"])
+        self.assertEqual(204.72, couple["user_total"])
+        self.assertEqual(couple["total"], tp.reprice(couple, flights, NOW))
+
     def test_both_on_discount_den_needs_two_seats(self):
         out_leg = flight("SFO", "SLC", "2026-11-21T11:20:00", "2026-11-21T14:16:00", dd=60.98)
         out_leg["discountDenFareSeatsRemaining"] = "1 Seat Left!"

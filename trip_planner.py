@@ -1087,7 +1087,7 @@ def reprice(item, flights_by, now):
             return None
         return round(2 * dd[0] - _voucher(fresh, [p for p, _ in dd[1]], item["self_connect"], 2), 2)
     if item["category"] == "Couple":
-        user = priced.get("GoWild") or priced.get("GoWild + Discount Den")
+        user = priced.get(item["user_category"])
         partner = [_cash(f) for f in fresh]
         if not user or None in partner:
             return None
