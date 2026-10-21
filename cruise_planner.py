@@ -44,6 +44,7 @@ OUTPUT = Path(__file__).parent / "results" / "cruise_planner"
 TICKER = OUTPUT / "ticker_all.json"
 DETAILS = OUTPUT / "deal_pages.jsonl"
 PAGES = OUTPUT / "deal_pages"
+EXTRA = OUTPUT / "extra_sailings.json"  # same shape as ticker deals, with a "source"
 
 WINDOW = (date(2026, 11, 1), date(2026, 12, 31))
 MAX_NIGHTS = 10
@@ -51,7 +52,8 @@ HUBS = ("DEN", "LAS", "ATL", "MCO", "PHL", "ORD")
 EMBARK_BY = dtime(11, 0)        # be at the port by about 11:00 on sailing day
 NEEDS_BED_BEFORE = dtime(5, 0)  # landing before this (or the day before) means a hotel night
 DOCK = dtime(8, 30)             # ships dock early; allow time to get off and clear
-LEAVE_SHIP_BUFFER_H = 2.5       # docking -> leaving the terminal, then the transfer
+LEAVE_SHIP_BUFFER_H = 4.0       # docking -> flight time, plus the transfer: everyone is off by
+                                # ~10:00 and wants ~1.5 h at the airport (lines advise 12:30-2 PM flights)
 HOTEL_EST = 150                 # scoring only: a pre/post-cruise hotel night
 GRATUITY_EST = 18               # per person per night, added by most lines (shown, not totalled)
 PTO_COST, HOUR_COST = tp.SCORE_PTO, tp.SCORE_HOUR
@@ -60,20 +62,20 @@ PTO_COST, HOUR_COST = tp.SCORE_PTO, tp.SCORE_HOUR
 # Ports with no entry are skipped (no Frontier service, e.g. Honolulu).
 PORTS = {
     "San Francisco": [],  # home port: no flight needed
-    "Los Angeles": [("LAX", 0.75, "LAX ~45 min"), ("ONT", 1.25, "Ontario ~1 h 15")],
-    "Long Beach": [("LAX", 0.5, "LAX ~30 min"), ("ONT", 1.0, "Ontario ~1 h")],
+    "Los Angeles": [("LAX", 0.65, "LAX ~35-40 min"), ("ONT", 1.15, "Ontario ~70 min")],
+    "Long Beach": [("LAX", 0.6, "LAX ~35-40 min"), ("ONT", 1.15, "Ontario ~70 min")],
     "San Diego": [("SAN", 0.25, "SAN ~15 min")],
-    "Miami": [("MIA", 0.25, "MIA ~20 min"), ("FLL", 0.75, "FLL ~45 min")],
+    "Miami": [("MIA", 0.4, "MIA ~15-30 min"), ("FLL", 0.9, "FLL ~45-60 min")],
     "Fort Lauderdale": [("FLL", 0.25, "FLL ~15 min"), ("MIA", 0.75, "MIA ~45 min")],
     "Port Canaveral": [("MCO", 1.0, "Orlando ~1 h")],
     "Tampa": [("TPA", 0.5, "TPA ~25 min")],
     "Jacksonville": [("JAX", 0.5, "JAX ~25 min")],
-    "Galveston": [("IAH", 1.5, "Houston IAH ~1 h 30"), ("HOU", 1.25, "Houston Hobby ~1 h 15")],
+    "Galveston": [("IAH", 1.5, "Houston IAH ~75-90 min")],  # Frontier doesn't serve Hobby
     "New Orleans": [("MSY", 0.5, "MSY ~30 min")],
     "Mobile": [("MSY", 2.5, "New Orleans ~2 h 30")],
     "San Juan": [("SJU", 0.5, "SJU ~25 min")],
     "Boston": [("BOS", 0.25, "BOS ~15 min")],
-    "New York": [("LGA", 0.75, "LaGuardia ~45 min"), ("EWR", 0.75, "Newark ~45 min")],
+    "New York": [("LGA", 0.85, "LaGuardia ~40-60 min"), ("EWR", 0.75, "Newark ~30-60 min")],
     "Bayonne": [("EWR", 0.5, "Newark ~30 min")],
 }
 
@@ -157,7 +159,16 @@ def scrape_ticker(build_driver, detail_wait=5):
 
 
 def load_deals():
-    return json.loads(TICKER.read_text())["deals"]
+    """Ticker deals plus EXTRA sailings (cruise-line prices found elsewhere); the
+    cheaper listing wins when both have the same ship and date."""
+    deals = json.loads(TICKER.read_text())["deals"]
+    extra = json.loads(EXTRA.read_text()) if EXTRA.exists() else []
+    best = {}
+    for d in deals + extra:
+        k = (d.get("ship", "").lower(), d["sail"])
+        if k not in best or d["now"] < best[k]["now"]:
+            best[k] = d
+    return list(best.values())
 
 
 def load_details():
@@ -174,9 +185,9 @@ def with_details(cands, details):
     out = []
     for c in cands:
         d = details.get(c["id"], {})
-        c = dict(c, ports=d.get("ports"), rates=d.get("rates"))
-        if c["rates"]:
-            c["ticker_now"], c["now"] = c["now"], min(c["rates"].values())
+        c = dict(c, ports=d.get("ports") or c.get("ports"), rates=d.get("rates") or c.get("rates"))
+        if d.get("rates"):
+            c["ticker_now"], c["now"] = c["now"], min(d["rates"].values())
         out.append(c)
     return out
 
@@ -342,7 +353,8 @@ def _pkg_lines(n, p, now):
              f" · plus est. gratuities ~${2 * GRATUITY_EST * c['nights']:,}",
              f"      {ship} · {c['nights']} nights · {tp._fmt(sail)} → {tp._fmt(debark)} · "
              f"{c['from']}" + ("" if c['to'] == c['from'] else f" → {c['to']}")
-             + f" · {c.get('rating', '?')}★ · {c.get('save', '?')}% off · VacationsToGo {c['id']}"
+             + (f" · {c.get('rating', '?')}★ · {c.get('save', '?')}% off · VacationsToGo {c['id']}"
+                if c["id"].startswith("#") else f" · price from {c.get('source', 'the cruise line')}")
              + (f" · {c['note']}" if c.get("note") else "")]
     if c.get("rates"):
         lines.append("      Cabins per person: " + ", ".join(f"{k} ${v:,}" for k, v in c["rates"].items())

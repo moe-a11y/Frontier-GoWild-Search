@@ -1,5 +1,6 @@
 """Offline checks for cruise_planner; no browser, network, or email.
 Flight records are synthetic, shaped like the ones colombia_search.search keeps."""
+import json
 import unittest
 from datetime import date
 
@@ -35,6 +36,20 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual({"Inside": 485, "Oceanview": 631}, cp.parse_deal_page(b)["rates"])
 
 
+    def test_extra_sailings_merge_with_the_ticker(self):
+        from unittest import mock
+        extra = [cruise(id="RCL-Voyager-1130", ship="Norwegian Getaway", now=149, source="royalcaribbean.com"),
+                 cruise(id="CCL-Firenze-1130", ship="Carnival Firenze", now=207, source="carnival.com")]
+        with mock.patch.object(cp, "TICKER") as ticker, mock.patch.object(cp, "EXTRA") as path:
+            ticker.read_text.return_value = json.dumps(dict(deals=[cruise()]))
+            path.exists.return_value, path.read_text.return_value = True, json.dumps(extra)
+            deals = {d["id"]: d for d in cp.load_deals()}
+        # Same ship and date as ticker deal #1 but cheaper: the cheaper listing wins.
+        self.assertEqual({"RCL-Voyager-1130", "CCL-Firenze-1130"}, set(deals))
+        c = cp.with_details(cp.candidates([deals["CCL-Firenze-1130"]]), {})[0]
+        self.assertIn("price from carnival.com", "\n".join(cp._pkg_lines(1, dict(
+            cruise=c, total=414, flights_two=0.0, out=[], back=[], pto=4), NOW)))
+
     def test_deal_page_price_wins(self):
         details = {"#1": dict(ports=["Cozumel, Mexico"], rates={"Inside": 179, "Balcony": 259})}
         c = cp.with_details(cp.candidates([cruise()]), details)[0]
@@ -51,7 +66,7 @@ class PackageTests(unittest.TestCase):
             # Day before: fine (hotel night). Morning of: must land by 11:00 - 1 h transfer.
             flight("SFO", "MCO", "2026-11-29T22:00:00", "2026-11-30T06:15:00", dd=99.0),
             flight("SFO", "MCO", "2026-11-30T06:00:00", "2026-11-30T14:30:00", dd=49.0),  # too late
-            # Home: ship docks 08:30 + 2.5 h + 1 h transfer -> flights from 12:00.
+            # Home: ship docks 08:30 + 4 h + 1 h transfer -> flights from 13:30.
             flight("MCO", "SFO", "2026-12-04T10:00:00", "2026-12-04T13:00:00", dd=39.0),  # too early
             flight("MCO", "SFO", "2026-12-04T15:00:00", "2026-12-04T18:00:00", gw=38.98, dd=59.0),
         )
