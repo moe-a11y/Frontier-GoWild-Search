@@ -1004,12 +1004,14 @@ def gateway_status(trip_key, items, cal_records):
     """One line per gateway: priced, on sale but no valid trip, or not served."""
     trip = TRIPS[trip_key]
     start, end = trip["window"]
-    open_days = defaultdict(list)
+    open_days, any_days = defaultdict(list), defaultdict(list)
     for r in cal_records:
         if r["status"] == "ok":
             for d in r["days"]:
-                if d["available"] and start <= d["date"] <= end:
-                    open_days[(r["origin"], r["destination"])].append(d["date"])
+                if d["available"]:
+                    any_days[(r["origin"], r["destination"])].append(d["date"])
+                    if start <= d["date"] <= end:
+                        open_days[(r["origin"], r["destination"])].append(d["date"])
     lines = []
     for gw in trip["gateways"]:
         priced = [i for i in items if gw in (i["gateway_in"], i["gateway_out"])
@@ -1024,6 +1026,9 @@ def gateway_status(trip_key, items, cal_records):
         elif out_days or back_days or via:
             span = f" (on sale from {out_days[0][5:]})" if out_days else ""
             lines.append(f"{gw} on sale but no round trip fits the rules{span}")
+        elif any(any_days[(a, b)] for bay in BAY_AREA for a, b in ((bay, gw), (gw, bay))):
+            first = min(d for bay in BAY_AREA for a, b in ((bay, gw), (gw, bay)) for d in any_days[(a, b)])
+            lines.append(f"{gw} only on sale outside the window (from {first[5:]})")
         else:
             lines.append(f"{gw} no Frontier service found")
     return lines
