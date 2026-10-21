@@ -143,26 +143,28 @@ TRIPS = {
     # the continental US; separate-ticket stopovers of up to 3 days are welcome.
     "buffalo": dict(
         title="Buffalo → Puerto Rico / outside the continental US",
+        # What Frontier sells outside the continental US this winter (route schedule
+        # checks, Oct 21; no USVI, Bahamas, Aruba, St. Maarten, Puerto Plata, Kingston,
+        # Liberia, Roatan or Tegucigalpa). MEX/GDL are Volaris codeshares.
         gateways={
             "SJU": "San Juan, PR", "BQN": "Aguadilla, PR", "PSE": "Ponce, PR",
             "SDQ": "Santo Domingo, DR", "PUJ": "Punta Cana, DR", "STI": "Santiago, DR",
-            "POP": "Puerto Plata, DR", "MBJ": "Montego Bay, Jamaica", "KIN": "Kingston, Jamaica",
-            "SJO": "San Jose, Costa Rica", "LIR": "Liberia, Costa Rica",
+            "MBJ": "Montego Bay, Jamaica", "SJO": "San Jose, Costa Rica",
             "GUA": "Guatemala City", "SAL": "San Salvador, El Salvador",
-            "SAP": "San Pedro Sula, Honduras", "TGU": "Tegucigalpa, Honduras",
-            "RTB": "Roatan, Honduras", "MDE": "Medellin, Colombia", "BOG": "Bogota, Colombia",
-            "CTG": "Cartagena, Colombia", "CUN": "Cancun, Mexico", "MEX": "Mexico City",
-            "GDL": "Guadalajara, Mexico", "STT": "St. Thomas, USVI", "STX": "St. Croix, USVI",
+            "SAP": "San Pedro Sula, Honduras", "MDE": "Medellin, Colombia",
+            "BOG": "Bogota, Colombia", "CTG": "Cartagena, Colombia", "CUN": "Cancun, Mexico",
+            "MEX": "Mexico City", "GDL": "Guadalajara, Mexico",
         },
-        groups=[("SJU", "BQN", "PSE"), ("SDQ", "PUJ", "STI", "POP"), ("MBJ", "KIN"),
-                ("SJO", "LIR"), ("GUA", "SAL"), ("SAP", "TGU", "RTB"), ("MDE", "BOG", "CTG"),
-                ("CUN",), ("MEX", "GDL"), ("STT", "STX")],
+        groups=[("SJU", "BQN", "PSE"), ("SDQ", "PUJ", "STI"), ("MBJ",), ("SJO",), ("GUA", "SAL"),
+                ("SAP",), ("MDE", "BOG", "CTG"), ("CUN",), ("MEX", "GDL")],
         window=("2026-12-19", "2027-02-28"), days=(6, 12),
         origins=("BUF",), stopover_days=3,
-        hubs=("MCO", "ATL", "PHL", "MIA", "FLL", "TPA", "SJU"),
+        # Frontier's only winter nonstops from BUF are ATL, MCO and TPA; SJU is the
+        # Caribbean hub.
+        hubs=("MCO", "ATL", "TPA", "SJU"),
         # GoWild doesn't show on calendars: also check the main hubs' legs to the
         # beach/Puerto Rico gateways on every date they could be flown.
-        hub_sweep=dict(hubs=("MCO", "ATL", "PHL"),
+        hub_sweep=dict(hubs=("MCO", "ATL", "TPA"),
                        gateways=("SJU", "BQN", "PSE", "SDQ", "PUJ", "STI", "MBJ", "CUN")),
     ),
 }
