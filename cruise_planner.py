@@ -302,7 +302,8 @@ def cruise_packages(cruise, flights_by, now, keep=3):
                          partner=partner, fares=fares, out=out, back=back, out_note=out_note,
                          back_note=back_note, hotel_nights=nights, pto=pto,
                          travel_hours=round(hours, 1), leave=leave.isoformat(), home=home.isoformat(),
-                         voucher=tp._your_voucher(flights, fares, len(out) > 1 or len(back) > 1) if flights else 0.0,
+                         voucher=tp._your_voucher(flights, fares, len(out) > 1 or len(back) > 1)
+                         if flights and now < tp.VOUCHER_EXPIRES else 0.0,
                          score=round(total + PTO_COST * pto + HOUR_COST * hours + HOTEL_EST * nights, 2)))
     best.sort(key=lambda p: p["score"])
     return best[:keep]
@@ -401,8 +402,11 @@ def build_report(packages, coverage, now, validation=None):
            "airport-to-port transfer (or the day before / before 05:00, + hotel night), and leaving after the ship "
            f"docks (~{DOCK:%H:%M}) + {LEAVE_SHIP_BUFFER_H:g} h + transfer. You pay the cheaper of GoWild / "
            "Discount Den per flight; partner Discount Den — or both on Discount Den on one booking.",
-           "The $100 voucher only covers YOUR base fare and must be used to book before it expires, "
-           "so totals don't assume it. Score = total + $60/PTO day + $5/flight hour + $150/hotel night.",
+           ("The $100 voucher expired at midnight Pacific on Oct 20; no total includes it. "
+            if now >= tp.VOUCHER_EXPIRES else
+            "The $100 voucher only covers YOUR base fare and must be used to book before it expires, "
+            "so totals don't assume it. ")
+           + "Score = total + $60/PTO day + $5/flight hour + $150/hotel night.",
            "GoWild (base $0.01 + taxes) opens the day before domestic flights and 10 days before San "
            "Juan; fares marked early-booking release are bookable now. A ship won't wait, so only plan "
            "on a not-yet-released GoWild seat with a backup (e.g. fly the day before).", ""]

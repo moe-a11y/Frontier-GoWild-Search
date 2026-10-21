@@ -166,7 +166,10 @@ undetected-chromedriver.
   (`PORTS`: port -> airports + transfer time; San Francisco needs no flight), paired with real
   Frontier flights that land by ~11:00 on sailing day (or the day before) and leave after
   docking + transfer, priced for two with trip_planner's rules. Phases `ticker` (headful:
-  VTG blocks headless) → `calendars` → `flights` → `report`; shares trip_planner's flight data.
+  VTG blocks headless) → `calendars` → `flights` → `report` / `validate` (re-fetch the listed
+  packages' flights first); shares trip_planner's flight data. Sailings priced on the cruise
+  lines' own sites can be added as `results/cruise_planner/extra_sailings.json` (ticker-deal
+  shape plus `source`); the cheaper listing wins for the same ship and date.
   Tests: `tests/test_cruise_planner.py`.
 - `gowild_fast.py`, `gowild_fast_bypass.py`, `roundtrip_fast.py`, `roundtrip_search.py` —
   `requests`/`curl_cffi` experiments; **blocked by PerimeterX** in practice. The two

@@ -167,6 +167,8 @@ DAYS_OFF = {"2026-11-26", "2026-11-27", "2026-12-25", "2027-01-01",
             "2027-01-18", "2027-02-15"}
 
 DD_TARGET = 150          # Discount Den round trips under this are called out
+# Expired "today" (Oct 20, 2026): used to book by midnight Pacific; after that it's gone.
+VOUCHER_EXPIRES = datetime(2026, 10, 21, tzinfo=ZoneInfo("America/Los_Angeles"))
 VOUCHER = 100            # travel voucher: base fare only, not taxes/fees; one booking,
                          # and only the holder's own fare (Frontier: non-transferable)
 # Rough taxes/fees per one-way ticket outside the continental US, for the
@@ -220,6 +222,16 @@ def date_pairs(trip, gateway=None):
     return pairs
 
 
+def origins(trip):
+    """Airports a trip leaves from and comes home to (the Bay Area unless set)."""
+    return trip.get("origins", BAY_AREA)
+
+
+def stop_days(trip):
+    """Longest separate-ticket stopover at a hub, in days (24 h each)."""
+    return trip.get("stopover_days", 1)
+
+
 def non_conus(code):
     return AIRPORT_TZ.get(code, "America/Los_Angeles") not in CONUS_TZS
 
@@ -268,7 +280,7 @@ def calendar_jobs(trip_keys, self_connect=True):
         trip = TRIPS[key]
         for gw in trip["gateways"]:
             months = _months(trip, gw)
-            for bay in BAY_AREA:
+            for bay in origins(trip):
                 add(direct, bay, gw, months)
                 add(direct, gw, bay, months)
             if not self_connect:
@@ -278,7 +290,7 @@ def calendar_jobs(trip_keys, self_connect=True):
                     continue
                 add(hub_legs, hub, gw, months)
                 add(hub_legs, gw, hub, months)
-                for bay in BAY_AREA:
+                for bay in origins(trip):
                     add(hub_legs, bay, hub, months)
                     add(hub_legs, hub, bay, months)
     return direct + hub_legs
@@ -293,7 +305,7 @@ def print_plan(trip_keys, self_connect):
         trip = TRIPS[key]
         pairs = date_pairs(trip)
         weekends = sorted({a + timedelta(days=(5 - a.weekday()) % 7) for a, _ in pairs})
-        print(f"\n{trip['title']} [{key}]")
+        print(f"\n{trip['title']} [{key}] from {', '.join(origins(trip))}")
         print(f"  Window {trip['window'][0]} to {trip['window'][1]}; "
               f"{trip['days'][0]}-{trip['days'][1]} days incl. a full weekend")
         print(f"  {len(pairs)} date pairs over {len(weekends)} weekends: "
@@ -417,7 +429,7 @@ def load_calendar_fares(records):
     return fares
 
 
-def _cal_ways(fares, origin, dest, day, hubs, outbound):
+def _cal_ways(fares, origin, dest, day, hubs, outbound, max_days=1):
     """Cheapest through-ticket and cheapest self-connect origin->dest whose first
     (outbound) or last (return) flight is on `day`: [(price, all_dd, legs)]."""
     def leg(o, d, when):
@@ -435,10 +447,10 @@ def _cal_ways(fares, origin, dest, day, hubs, outbound):
             continue
         if outbound:
             pairs = [(leg(origin, hub, day), leg(hub, dest, day + timedelta(days=k)))
-                     for k in (0, 1)]
+                     for k in range(max_days + 1)]
         else:
             pairs = [(leg(origin, hub, day - timedelta(days=k)), leg(hub, dest, day))
-                     for k in (0, 1)]
+                     for k in range(max_days + 1)]
         for a, b in pairs:
             if a and b:
                 way = (a[0][0] + b[0][0], a[0][1] and b[0][1], (a[1], b[1]))
@@ -460,10 +472,10 @@ def screen_trip(key, fares, self_connect=True):
             for out, back in date_pairs(trip, g_in):
                 if back < served_from(g_out):
                     continue
-                outs = [(w, bay) for bay in BAY_AREA
-                        for w in _cal_ways(fares, bay, g_in, out, hubs, True)]
-                backs = [(w, bay) for bay in BAY_AREA
-                         for w in _cal_ways(fares, g_out, bay, back, hubs, False)]
+                outs = [(w, bay) for bay in origins(trip)
+                        for w in _cal_ways(fares, bay, g_in, out, hubs, True, stop_days(trip))]
+                backs = [(w, bay) for bay in origins(trip)
+                         for w in _cal_ways(fares, g_out, bay, back, hubs, False, stop_days(trip))]
                 combos = [(a[0] + b[0], a[1] and b[1], a, b, o, h)
                           for (a, o), (b, h) in product(outs, backs)]
                 if not combos:
@@ -516,7 +528,7 @@ def sweep_jobs(trip_key, fares):
         outs = sorted({a for a, _ in pairs})
         backs = sorted({b for _, b in pairs} | {b for g in trip["gateways"]
                                                 for _, b in date_pairs(trip, g)})
-        for bay in BAY_AREA:
+        for bay in origins(trip):
             jobs += [dict(origin=bay, destination=gw, date=d.isoformat()) for d in outs
                      if (bay, gw, d.isoformat()) in fares]
             jobs += [dict(origin=gw, destination=bay, date=d.isoformat()) for d in backs
@@ -581,9 +593,10 @@ def _min_connect(first):
     return MIN_CONNECT_INTL if non_conus(o) and not non_conus(d) else MIN_CONNECT_HOURS
 
 
-def _ways(flights_by, origin, dest, day, hubs, outbound):
+def _ways(flights_by, origin, dest, day, hubs, outbound, max_days=1):
     """Every way to fly origin->dest whose first (outbound) or last (return)
-    flight is on `day`: Frontier's own itineraries plus checked self-connections."""
+    flight is on `day`: Frontier's own itineraries plus checked self-connections
+    (a stopover of up to max_days x 24 h at the hub)."""
     get = lambda o, d, when: flights_by.get((o, d, when.isoformat()), [])
     ways = [[f] for f in get(origin, dest, day)]
     for hub in hubs:
@@ -591,13 +604,13 @@ def _ways(flights_by, origin, dest, day, hubs, outbound):
             continue
         if outbound:
             firsts = get(origin, hub, day)
-            seconds = get(hub, dest, day) + get(hub, dest, day + timedelta(days=1))
+            seconds = [f for k in range(max_days + 1) for f in get(hub, dest, day + timedelta(days=k))]
         else:
-            firsts = get(origin, hub, day) + get(origin, hub, day - timedelta(days=1))
+            firsts = [f for k in range(max_days + 1) for f in get(origin, hub, day - timedelta(days=k))]
             seconds = get(hub, dest, day)
         for a, b in product(firsts, seconds):
             gap = (boundary(b) - boundary(a, True)).total_seconds() / 3600
-            if _min_connect(a) <= gap <= MAX_CONNECT_HOURS:
+            if _min_connect(a) <= gap <= MAX_CONNECT_HOURS * max_days:
                 ways.append([a, b])
     return ways
 
@@ -699,16 +712,16 @@ def build_itineraries(trip_key, flights_by, now, self_connect=True):
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
 
     by_home_day = defaultdict(list)
-    for gw, home, day in product(trip["gateways"], BAY_AREA, days):
-        for way in _ways(flights_by, gw, home, day, hubs, False):
+    for gw, home, day in product(trip["gateways"], origins(trip), days):
+        for way in _ways(flights_by, gw, home, day, hubs, False, stop_days(trip)):
             by_home_day[(gw, home, _local(way[-1], True).date())].append(way)
     backs = defaultdict(list)  # (gateway, home arrival date) -> [(home, flights)]
     for (gw, home, home_day), ways in by_home_day.items():
         backs[(gw, home_day)] += [(home, way) for way in _prune(ways, now)]
 
     best = {}
-    for gw, origin, day in product(trip["gateways"], BAY_AREA, days):
-        for out in _prune(_ways(flights_by, origin, gw, day, hubs, True), now):
+    for gw, origin, day in product(trip["gateways"], origins(trip), days):
+        for out in _prune(_ways(flights_by, origin, gw, day, hubs, True, stop_days(trip)), now):
             leave = _local(out[0])
             if leave.date() < max(start, served_from(gw)):
                 continue
@@ -782,7 +795,7 @@ def _add_itinerary(best, trip_key, origin, g_in, g_out, home, out, back, now):
     two_seats = all((_seats_left(f.get("discountDenFareSeatsRemaining")) or 2) >= 2 for f in flights)
     entries = []
     for category, (total, fares) in _price(flights, now).items():
-        voucher = _your_voucher(flights, fares, self_connect)
+        voucher = _your_voucher(flights, fares, self_connect) if now < VOUCHER_EXPIRES else 0.0
         entries.append(dict(common, category=category, total=total, fares=fares, voucher=voucher))
         if category == "Discount Den" and two_seats:
             # Both on Discount Den on one booking; the voucher still only covers you.
@@ -897,7 +910,10 @@ def _trip_lines(rank, i, now, tag=""):
         extras.append("nonstop both ways")
     lines = [head + (f"  [{'; '.join(extras)}]" if extras else "")]
     partner, voucher = i.get("partner_total"), i.get("voucher", 0)
-    if i["category"] == "Couple DD":
+    expired = now >= VOUCHER_EXPIRES
+    if i["category"] == "Couple DD" and expired:
+        lines.append(f"      Both of you: 2 × ${i['user_total']:.2f} Discount Den, one booking")
+    elif i["category"] == "Couple DD":
         few = [_seats_left(f.get("discountDenFareSeatsRemaining")) for f in i["out"] + i["back"]]
         few = min((n for n in few if n is not None), default=None)
         lines.append(f"      Both of you: 2 × ${i['user_total']:.2f} Discount Den − ${voucher:.2f} voucher "
@@ -906,7 +922,10 @@ def _trip_lines(rank, i, now, tag=""):
     elif i["category"] == "Couple":
         lines.append(f"      You ${i['user_total']:.2f} {i['user_category']} + partner ${partner:.2f} Discount Den "
                      + (f"− ${voucher:.2f} voucher on your Discount Den base fare (est.)" if voucher
-                        else "(the voucher can't cover GoWild or your partner's fare)"))
+                        else "" if expired else "(the voucher can't cover GoWild or your partner's fare)"))
+    elif i["category"] == "Discount Den" and expired:
+        if i["total"] < DD_TARGET:
+            lines.append(f"      ★ under ${DD_TARGET}")
     elif i["category"] == "Discount Den":
         lines.append(f"      Solo with your ${VOUCHER} voucher: ≈${i['total'] - voucher:.2f} "
                      f"(voucher covers est. ${voucher:.2f} of base fare)"
@@ -958,11 +977,14 @@ def build_report(by_trip, coverage, now, validation=None, status=None):
            "assumes Thanksgiving Thu/Fri, Dec 25, Jan 1, MLK and Presidents' Day off, "
            "and no PTO for a weekday departure at/after 17:00.",
            "For two = you on GoWild + your partner on Discount Den on the SAME flights "
-           "(a separate booking), or both of you on Discount Den on one booking. The "
-           f"${VOUCHER} voucher is non-transferable: it covers only YOUR base fare (none on "
-           "GoWild, whose base is $0.01), once; unused value is lost. Frontier "
-           "quotes totals only, so the voucher's base-fare share is estimated (domestic: "
-           "US tax formula; Puerto Rico/USVI ~$45, international ~$85 taxes per one-way).",
+           "(a separate booking), or both of you on Discount Den on one booking. "
+           + (f"The ${VOUCHER} voucher expired at midnight Pacific on Oct 20, so no total "
+              "includes it (if you booked with it before then, that booking cost you up to "
+              f"${VOUCHER} less)." if now >= VOUCHER_EXPIRES else
+              f"The ${VOUCHER} voucher is non-transferable: it covers only YOUR base fare (none on "
+              "GoWild, whose base is $0.01), once; unused value is lost. Frontier "
+              "quotes totals only, so the voucher's base-fare share is estimated (domestic: "
+              "US tax formula; Puerto Rico/USVI ~$45, international ~$85 taxes per one-way)."),
            f"Lists are ranked by price + ${SCORE_HOUR}/hour of travel, so a much longer "
            "itinerary has to be meaningfully cheaper to rank higher.",
            "GoWild opens 1 day before domestic departures and 10 days before anything "
@@ -977,9 +999,11 @@ def build_report(by_trip, coverage, now, validation=None, status=None):
         trip, ranked = TRIPS[key], per_trip[key]
         out += ["", "#" * 64, f"{trip['title'].upper()}",
                 f"{trip['window'][0]} to {trip['window'][1]} · {trip['days'][0]}-{trip['days'][1]} days · "
-                f"via {', '.join(trip['gateways'])}", "#" * 64]
-        out.append(f"\nFor two — you on GoWild + partner on Discount Den, or both on Discount Den; "
-                   f"${VOUCHER} voucher applied (top 5):")
+                + (f"from {', '.join(origins(trip))} · " if origins(trip) != BAY_AREA else "")
+                + (f"stopovers up to {stop_days(trip)} days · " if stop_days(trip) > 1 else "")
+                + f"via {', '.join(trip['gateways'])}", "#" * 64]
+        out.append(f"\nFor two — you on GoWild + partner on Discount Den, or both on Discount Den"
+                   + ("" if now >= VOUCHER_EXPIRES else f"; ${VOUCHER} voucher applied") + " (top 5):")
         out += _lines(ranked["couple"], now, "no GoWild fares released yet for these dates — see the watch list")
         if trip.get("combo"):
             combo = trip["combo"]
@@ -1010,7 +1034,7 @@ def build_report(by_trip, coverage, now, validation=None, status=None):
         out += _lines(overall["bets"], now, "", title)
     out += ["", "BEST SOLO PICKS — GoWild just for you:"]
     out += _lines(overall["solo_gw"], now, "none released yet", title)
-    out += ["", f"BEST SOLO PICKS — Discount Den + your ${VOUCHER} voucher:"]
+    out += ["", "BEST SOLO PICKS — Discount Den" + ("" if now >= VOUCHER_EXPIRES else f" + your ${VOUCHER} voucher") + ":"]
     out += _lines(overall["solo_dd"], now, "none found", title)
 
     if validation:
@@ -1028,7 +1052,9 @@ def coverage_lines(trip_keys, flights_by_status, cal_records, n_items):
     latest = {(r["origin"], r["destination"], r["month"]): r["status"] for r in cal_records}
     cal = Counter(latest.values())
     lines = [f"Trips: {', '.join(TRIPS[k]['title'] for k in trip_keys)}",
-             f"Bay Area origins: {', '.join(BAY_AREA)}; open-jaw home allowed",
+             f"Bay Area origins: {', '.join(BAY_AREA)}; open-jaw home allowed"
+             + "".join(f"; {TRIPS[k]['title']} from {', '.join(origins(TRIPS[k]))}"
+                       for k in trip_keys if origins(TRIPS[k]) != BAY_AREA),
              "Calendar pages: " + (", ".join(f"{v} {k}" for k, v in sorted(cal.items())) or "none"),
              "Exact flight pages: " + (", ".join(f"{v} {k}" for k, v in sorted(flights_by_status.items())) or "none"),
              f"Priced/pending itineraries considered: {n_items}"]
@@ -1062,8 +1088,8 @@ def gateway_status(trip_key, items, cal_records):
     for gw in trip["gateways"]:
         priced = [i for i in items if gw in (i["gateway_in"], i["gateway_out"])
                   and i["category"] != "GoWild pending"]
-        out_days = sorted(d for bay in BAY_AREA for d in open_days[(bay, gw)])
-        back_days = sorted(d for bay in BAY_AREA for d in open_days[(gw, bay)])
+        out_days = sorted(d for bay in origins(trip) for d in open_days[(bay, gw)])
+        back_days = sorted(d for bay in origins(trip) for d in open_days[(gw, bay)])
         via = any(open_days[(h, gw)] for h in trip["hubs"])
         if priced:
             lines.append(f"{gw} priced (from ${min(i['total'] for i in priced if i['category'] == 'Discount Den') if any(i['category'] == 'Discount Den' for i in priced) else min(i['total'] for i in priced):.0f})")
@@ -1072,8 +1098,8 @@ def gateway_status(trip_key, items, cal_records):
         elif out_days or back_days or via:
             span = f" (on sale from {out_days[0][5:]})" if out_days else ""
             lines.append(f"{gw} on sale but no round trip fits the rules{span}")
-        elif any(any_days[(a, b)] for bay in BAY_AREA for a, b in ((bay, gw), (gw, bay))):
-            first = min(d for bay in BAY_AREA for a, b in ((bay, gw), (gw, bay)) for d in any_days[(a, b)])
+        elif any(any_days[(a, b)] for bay in origins(trip) for a, b in ((bay, gw), (gw, bay))):
+            first = min(d for bay in origins(trip) for a, b in ((bay, gw), (gw, bay)) for d in any_days[(a, b)])
             lines.append(f"{gw} only on sale outside the window (from {first[5:]})")
         else:
             lines.append(f"{gw} no Frontier service found")
@@ -1131,13 +1157,15 @@ def reprice(item, flights_by, now):
         dd = priced.get("Discount Den")
         if not dd:
             return None
-        return round(2 * dd[0] - _your_voucher(fresh, dd[1], item["self_connect"]), 2)
+        voucher = _your_voucher(fresh, dd[1], item["self_connect"]) if now < VOUCHER_EXPIRES else 0.0
+        return round(2 * dd[0] - voucher, 2)
     if item["category"] == "Couple":
         user = priced.get(item["user_category"])
         partner = [_cash(f) for f in fresh]
         if not user or None in partner:
             return None
-        return round(user[0] + sum(partner) - _your_voucher(fresh, user[1], item["self_connect"]), 2)
+        voucher = _your_voucher(fresh, user[1], item["self_connect"]) if now < VOUCHER_EXPIRES else 0.0
+        return round(user[0] + sum(partner) - voucher, 2)
     hit = priced.get(item["category"])
     return hit[0] if hit else None
 
@@ -1170,10 +1198,10 @@ def rule_problems(item):
             problems.append(f"{label} ends at {stations[-1]}, not {to}")
         for a, b in zip(way, way[1:]):
             gap = (boundary(b) - boundary(a, True)).total_seconds() / 3600
-            if not _min_connect(a) <= gap <= MAX_CONNECT_HOURS:
+            if not _min_connect(a) <= gap <= MAX_CONNECT_HOURS * stop_days(trip):
                 problems.append(f"{label} self-connection of {gap:.1f}h")
-    if item["origin"] not in BAY_AREA or item["home"] not in BAY_AREA:
-        problems.append("doesn't start and end in the Bay Area")
+    if item["origin"] not in origins(trip) or item["home"] not in origins(trip):
+        problems.append(f"doesn't start and end at {'/'.join(origins(trip))}")
     flights = item["out"] + item["back"]
     if any(boundary(b) <= boundary(a, True) for a, b in zip(flights, flights[1:])):
         problems.append("flights out of order")

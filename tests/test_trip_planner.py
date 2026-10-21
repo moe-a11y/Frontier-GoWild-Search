@@ -9,6 +9,18 @@ import trip_planner as tp
 NOW = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
 
 
+def setUpModule():
+    # These tests price the voucher as if it hadn't expired yet; see test_voucher_expiry.
+    global _voucher_patch
+    from unittest import mock
+    _voucher_patch = mock.patch.object(tp, "VOUCHER_EXPIRES", datetime(2099, 1, 1, tzinfo=timezone.utc))
+    _voucher_patch.start()
+
+
+def tearDownModule():
+    _voucher_patch.stop()
+
+
 def _utc(code, local):
     dt = datetime.fromisoformat(local).replace(tzinfo=ZoneInfo(tp.AIRPORT_TZ[code]))
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -319,6 +331,17 @@ class ItineraryTests(unittest.TestCase):
         ids = lambda xs: {tp._itinerary_id(i) for i in xs}
         self.assertNotIn(tp._itinerary_id(top), ids(per_trip["desert"]["couple"]))
         self.assertIn(tp._itinerary_id(top), ids(tp.shown_items({"desert": items})))
+
+    def test_voucher_expiry(self):
+        from unittest import mock
+        with mock.patch.object(tp, "VOUCHER_EXPIRES", NOW):
+            items = tp.build_itineraries("desert", self.desert_trip(), NOW)
+            both = next(i for i in items if i["category"] == "Couple DD")
+            self.assertEqual((0.0, 2 * 108), (both["voucher"], both["total"]))
+            self.assertEqual(both["total"], tp.reprice(both, self.desert_trip(), NOW))
+            report = tp.build_report({"desert": items}, ["Coverage: test"], NOW)
+        self.assertIn("voucher expired at midnight Pacific", report)
+        self.assertNotIn("Solo with your $100 voucher", report)
 
     def test_both_on_discount_den_needs_two_seats(self):
         out_leg = flight("SFO", "SLC", "2026-11-21T11:20:00", "2026-11-21T14:16:00", dd=60.98)
