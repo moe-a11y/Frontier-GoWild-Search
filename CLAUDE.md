@@ -149,7 +149,11 @@ undetected-chromedriver.
   Phases: `plan` → `calendars` (month low-fare calendars, ~1,000 pages ≈ 4 h, resumable)
   → `screen` → `flights` (exact pages for the shortlist) → `validate` (final review: re-fetch
   every listed leg, re-price + rule-check each itinerary, rebuild the report, email); `all`
-  runs them. `report` alone rebuilds from saved pages without re-fetching.
+  runs them. `report` alone rebuilds from saved pages without re-fetching. `screen` adds a
+  **GoWild sweep** (exact page for every valid leave/return date on every served Bay Area
+  route — GoWild, incl. early-booking releases, never shows on calendars). Report ranks
+  **trips for two** (user on GoWild + partner on Discount Den on the same flights, $100
+  voucher on the partner's estimated base fare), solo GoWild, and solo Discount Den + voucher.
   GoWild for weeks-out dates isn't released yet, so run `watch` **daily during the trip
   window**: it re-checks shortlisted legs whose GoWild window is open and emails only when a
   new GoWild round trip appears. Data in `results/trip_planner/`. Tests: `tests/test_trip_planner.py`.
