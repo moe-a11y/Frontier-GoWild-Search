@@ -20,7 +20,9 @@ Phases (resumable; data in results/trip_planner/):
   screen     candidate trips from the calendars -> shortlist of legs; offline
   flights    exact flight page for every shortlisted leg (times, GoWild, DD)
   report     price real itineraries from the exact pages, save, email
-  all        calendars -> screen -> flights -> report
+  validate   final review: re-fetch every leg the report lists, re-price each
+             itinerary, rule-check it, rebuild the report with the results, email
+  all        calendars -> screen -> flights -> validate
   watch      re-check shortlisted legs whose GoWild window is open, report, and
              email when a new GoWild round trip shows up (run daily in the window)
 
@@ -727,7 +729,7 @@ def _trip_lines(rank, i, now, tag=""):
     return lines
 
 
-def build_report(by_trip, coverage, now):
+def build_report(by_trip, coverage, now, validation=None):
     out = ["=" * 64, "FRONTIER TRIP PLANNER — BAY AREA ROUND TRIPS", "=" * 64,
            f"Generated {now.astimezone(ZoneInfo('America/Los_Angeles')):%Y-%m-%d %H:%M %Z}. "
            "One adult; fares as quoted by Frontier incl. taxes/fees; not booked.",
@@ -771,6 +773,8 @@ def build_report(by_trip, coverage, now):
             for line in _trip_lines(r, i, now, tag=f" · {TRIPS[i['trip']]['title']}")] \
         or ["   (no itineraries found)"]
 
+    if validation:
+        out += ["", "-" * 64, "VALIDATION (final review)"] + validation
     out += ["", "-" * 64, "COVERAGE"]
     out += coverage
     out += ["Booking links: https://booking.flyfrontier.com/Flight/InternalSelect?"
@@ -792,21 +796,162 @@ def coverage_lines(trip_keys, flights_by_status, cal_records, n_items):
     return lines
 
 
-def make_report(trip_keys, self_connect, now=None):
-    now = now or datetime.now(timezone.utc)
+def build_all(trip_keys, self_connect, now):
+    """(itineraries per trip, flights by (origin, dest, date), page statuses)
+    from the latest exact flight pages."""
     latest = latest_records(read_jsonl(FLIGHTS))
     flights_by = {k: r["flights"] for k, r in latest.items() if r["status"] == "ok"}
     by_trip = {k: build_itineraries(k, flights_by, now, self_connect) for k in trip_keys}
-    statuses = Counter(r["status"] for r in latest.values())
+    return by_trip, flights_by, Counter(r["status"] for r in latest.values())
+
+
+def make_report(trip_keys, self_connect, now=None, built=None, validation=None):
+    now = now or datetime.now(timezone.utc)
+    by_trip, _, statuses = built or build_all(trip_keys, self_connect, now)
     coverage = coverage_lines(trip_keys, statuses, read_jsonl(CALENDARS),
                               sum(len(v) for v in by_trip.values()))
-    report = build_report(by_trip, coverage, now)
+    report = build_report(by_trip, coverage, now, validation)
     OUTPUT.mkdir(parents=True, exist_ok=True)
     path = OUTPUT / f"report_{now.astimezone():%Y%m%d_%H%M%S}.txt"
     path.write_text(report)
     print(report)
     print(f"💾 Saved report to {path}")
     return report, by_trip, statuses
+
+
+# --- Validation (final review) -------------------------------------------------
+def _flight_id(f):
+    return "/".join(f"{leg.get('flightNumber')}@{leg['departureStation']}{leg['departureDate'][:16]}"
+                    for leg in f["legs"])
+
+
+def _itinerary_id(i):
+    return i["category"] + "|" + ",".join(_flight_id(f) for f in i["out"] + i["back"])
+
+
+def shown_items(by_trip):
+    """Every itinerary the report can list, overall picks included."""
+    shown = []
+    for items in by_trip.values():
+        r = rank_trip(items)
+        shown += r["gowild"] + r["dd_target"] + r["dd_any"] + r["pending"]
+    return _distinct(shown, len(shown), key=_itinerary_id)
+
+
+def reprice(item, flights_by, now):
+    """The item's total in its category from fresh pages, or None if a flight
+    or that fare type is no longer offered."""
+    fresh = []
+    for f in item["out"] + item["back"]:
+        o, d = _ends(f)
+        match = [g for g in flights_by.get((o, d, f["legs"][0]["departureDate"][:10]), [])
+                 if _flight_id(g) == _flight_id(f)]
+        if not match:
+            return None
+        fresh.append(match[0])
+    hit = _price(fresh, now).get(item["category"])
+    return hit[0] if hit else None
+
+
+def rule_problems(item):
+    """Independent re-check of one itinerary against the trip's rules."""
+    trip = TRIPS[item["trip"]]
+    start, end = map(_d, trip["window"])
+    lo, hi = trip["days"]
+    leave, home = _d(item["leave"][:10]), _d(item["home_arrival"][:10])
+    problems = []
+    if leave < max(start, served_from(item["gateway_in"])) or home > end:
+        problems.append("outside the trip's date window")
+    if (home - leave).days + 1 != item["days"] or not lo <= item["days"] <= hi:
+        problems.append(f"{item['days']} days is outside {lo}-{hi}")
+    if not spans_weekend(leave, home):
+        problems.append("doesn't cover a full Saturday + Sunday")
+    if not any(item["gateway_in"] in g and item["gateway_out"] in g for g in trip["groups"]):
+        problems.append("open-jaw between gateways in different groups")
+    for label, way, frm, to in (("out", item["out"], item["origin"], item["gateway_in"]),
+                                ("back", item["back"], item["gateway_out"], item["home"])):
+        stations = [frm]
+        for f in way:
+            legs = f["legs"]
+            if legs[0]["departureStation"] != stations[-1] or any(
+                    a["arrivalStation"] != b["departureStation"] for a, b in zip(legs, legs[1:])):
+                problems.append(f"{label} routing doesn't connect")
+            stations.append(legs[-1]["arrivalStation"])
+        if stations[-1] != to:
+            problems.append(f"{label} ends at {stations[-1]}, not {to}")
+        for a, b in zip(way, way[1:]):
+            gap = (boundary(b) - boundary(a, True)).total_seconds() / 3600
+            if not _min_connect(a) <= gap <= MAX_CONNECT_HOURS:
+                problems.append(f"{label} self-connection of {gap:.1f}h")
+    if item["origin"] not in BAY_AREA or item["home"] not in BAY_AREA:
+        problems.append("doesn't start and end in the Bay Area")
+    flights = item["out"] + item["back"]
+    if any(boundary(b) <= boundary(a, True) for a, b in zip(flights, flights[1:])):
+        problems.append("flights out of order")
+    for f, (price, kind) in zip(flights, item["fares"]):
+        if kind == "GoWild" and price is not None and is_blackout_date(_local(f).date().isoformat()):
+            problems.append(f"GoWild on blackout date {_local(f).date()}")
+        if price is not None and price <= 0:
+            problems.append("non-positive fare")
+    if abs(sum(p for p, _ in item["fares"] if p is not None) - item["total"]) > 0.01:
+        problems.append("total doesn't match its fares")
+    return problems
+
+
+def _short(i):
+    leave, home = _d(i["leave"][:10]), _d(i["home_arrival"][:10])
+    return (f"{TRIPS[i['trip']]['title']}: {i['origin']}→{i['gateway_in']} {_fmt(leave)}, "
+            f"{i['gateway_out']}→{i['home']} {_fmt(home)} ({i['category']})")
+
+
+def validation_lines(shown, n_legs, built, now):
+    """Compare what the first pass listed against fresh pages, then rule-check
+    everything the rebuilt report lists."""
+    by_trip, flights_by, _ = built
+    priced = [i for i in shown if i["category"] != "GoWild pending"]
+    confirmed, changed, gone = 0, [], []
+    for i in priced:
+        new = reprice(i, flights_by, now)
+        if new is None:
+            gone.append(i)
+        elif abs(new - i["total"]) < 0.005:
+            confirmed += 1
+        else:
+            changed.append((i, new))
+    when = now.astimezone(ZoneInfo("America/Los_Angeles"))
+    lines = [f"Re-fetched {n_legs} flight pages behind the {len(shown)} itineraries of the first "
+             f"pass at {when:%Y-%m-%d %H:%M %Z}; everything above is rebuilt from those fresh pages.",
+             f"Fares re-checked: {confirmed} unchanged, {len(changed)} changed, "
+             f"{len(gone)} no longer offered (of {len(priced)} priced itineraries)."]
+    lines += [f"  ⚠️  {_short(i)}: ${i['total']:.2f} → ${new:.2f}" for i, new in changed]
+    lines += [f"  ✖  {_short(i)}: flight or fare no longer offered" for i in gone]
+    final = shown_items(by_trip)
+    problems = [(i, p) for i in final for p in rule_problems(i)]
+    lines.append(f"Rule checks on all {len(final)} listed itineraries (window, length, full weekend, "
+                 "routing, connection times, blackout dates, totals): "
+                 + ("all passed." if not problems else f"{len(problems)} problem(s):"))
+    lines += [f"  ✖  {_short(i)}: {p}" for i, p in problems]
+    return lines
+
+
+def run_validate(trip_keys, self_connect, fetch=None):
+    """Final review: re-fetch every leg the report would list, then rebuild the
+    report from fresh pages with a validation section. Returns make_report's result."""
+    first = build_all(trip_keys, self_connect, datetime.now(timezone.utc))
+    shown = shown_items(first[0])
+    legs = []
+    for i in shown:
+        for f in i["out"] + i["back"]:
+            o, d = _ends(f)
+            leg = dict(origin=o, destination=d, date=f["legs"][0]["departureDate"][:10])
+            if leg not in legs:
+                legs.append(leg)
+    print(f"Validation: re-checking {len(legs)} legs behind {len(shown)} itineraries", flush=True)
+    (fetch or fetch_flights)(legs, refresh=True)
+    now = datetime.now(timezone.utc)
+    built = build_all(trip_keys, self_connect, now)
+    return make_report(trip_keys, self_connect, now, built,
+                       validation_lines(shown, len(legs), built, now))
 
 
 def _signature(i):
@@ -843,7 +988,8 @@ def watch_due(jobs, latest, now):
 # --- Main ---------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("phase", choices=("plan", "calendars", "screen", "flights", "report", "all", "watch"))
+    ap.add_argument("phase", choices=("plan", "calendars", "screen", "flights", "report",
+                                      "validate", "all", "watch"))
     ap.add_argument("--trips", default=",".join(TRIPS), help="comma list of: " + ", ".join(TRIPS))
     ap.add_argument("--no-self-connect", action="store_true", help="through-tickets only")
     ap.add_argument("--refresh", action="store_true", help="re-fetch pages already recorded")
@@ -871,8 +1017,11 @@ def main():
         due = watch_due(jobs, latest_records(read_jsonl(FLIGHTS)), datetime.now(timezone.utc))
         print(f"{len(due)} shortlisted legs inside their GoWild window", flush=True)
         fetch_flights(due, refresh=True)
-    if args.phase in ("report", "all", "watch"):
-        report, by_trip, statuses = make_report(trip_keys, self_connect)
+    if args.phase in ("report", "validate", "all", "watch"):
+        if args.phase in ("validate", "all"):
+            report, by_trip, statuses = run_validate(trip_keys, self_connect)
+        else:
+            report, by_trip, statuses = make_report(trip_keys, self_connect)
         if args.no_email:
             return
         if args.phase == "watch":

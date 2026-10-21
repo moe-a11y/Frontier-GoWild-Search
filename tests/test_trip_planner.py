@@ -143,6 +143,61 @@ class ItineraryTests(unittest.TestCase):
         self.assertIn("Cheapest Discount Den round trips found", report)
         self.assertIn("OVERALL TOP 3", report)
 
+    def desert_trip(self, back_gw=15.0):
+        return by_key(
+            flight("SFO", "LAS", "2026-11-06T18:30:00", "2026-11-06T20:00:00", gw=14.0, dd=49.0),
+            flight("PSP", "SFO", "2026-11-08T19:00:00", "2026-11-08T20:30:00", gw=back_gw, dd=59.0),
+        )
+
+    def test_rule_checks(self):
+        items = tp.build_itineraries("desert", self.desert_trip(), NOW)
+        for item in items:
+            self.assertEqual([], tp.rule_problems(item), item["category"])
+        bad = dict(next(i for i in items if i["category"] == "GoWild"), days=9)
+        bad["total"] += 1
+        problems = tp.rule_problems(bad)
+        self.assertIn("total doesn't match its fares", problems)
+        self.assertTrue(any("outside 3-5" in p for p in problems))
+
+    def test_reprice(self):
+        item = next(i for i in tp.build_itineraries("desert", self.desert_trip(), NOW)
+                    if i["category"] == "GoWild")
+        self.assertEqual(29.0, tp.reprice(item, self.desert_trip(), NOW))
+        self.assertEqual(34.0, tp.reprice(item, self.desert_trip(back_gw=20.0), NOW))
+        self.assertIsNone(tp.reprice(item, self.desert_trip(back_gw=None), NOW))
+
+    def test_run_validate_rebuilds_from_fresh_pages(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        def records(flights_by):
+            return [dict(origin=o, destination=d, date=day, status="ok", flights=fl,
+                         checked_at="2026-10-21T05:00:00-07:00")
+                    for (o, d, day), fl in flights_by.items()]
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(tp, "OUTPUT", Path(tmp)), \
+                patch.object(tp, "FLIGHTS", Path(tmp) / "flights.jsonl"), \
+                patch.object(tp, "CALENDARS", Path(tmp) / "calendars.jsonl"), \
+                patch("builtins.print"):
+            tp.FLIGHTS.write_text("".join(json.dumps(r) + "\n" for r in records(self.desert_trip())))
+            fetched = []
+
+            def fake_fetch(legs, refresh):  # the return GoWild fare went up $5
+                fetched.extend(legs)
+                with tp.FLIGHTS.open("a") as out:
+                    for r in records(self.desert_trip(back_gw=20.0)):
+                        out.write(json.dumps(r) + "\n")
+
+            report, by_trip, _ = tp.run_validate(["desert"], True, fetch=fake_fetch)
+        self.assertEqual(2, len(fetched))
+        self.assertIn("VALIDATION (final review)", report)
+        self.assertIn("$29.00 → $34.00", report)
+        self.assertIn("all passed.", report)
+        self.assertIn("$34.00 GoWild", report)
+
     def test_watch_due(self):
         jobs = [dict(origin="SFO", destination="SJU", date="2026-10-30"),
                 dict(origin="SFO", destination="SJU", date="2026-11-06"),

@@ -147,7 +147,9 @@ undetected-chromedriver.
   Origins SFO/SJC/OAK (Frontier back at OAK since Aug 20, 2026), open-jaw within gateway
   groups, Frontier through-tickets **plus separate-ticket self-connections via hubs**.
   Phases: `plan` → `calendars` (month low-fare calendars, ~1,000 pages ≈ 4 h, resumable)
-  → `screen` → `flights` (exact pages for the shortlist) → `report` (+email); `all` runs them.
+  → `screen` → `flights` (exact pages for the shortlist) → `validate` (final review: re-fetch
+  every listed leg, re-price + rule-check each itinerary, rebuild the report, email); `all`
+  runs them. `report` alone rebuilds from saved pages without re-fetching.
   GoWild for weeks-out dates isn't released yet, so run `watch` **daily during the trip
   window**: it re-checks shortlisted legs whose GoWild window is open and emails only when a
   new GoWild round trip appears. Data in `results/trip_planner/`. Tests: `tests/test_trip_planner.py`.
