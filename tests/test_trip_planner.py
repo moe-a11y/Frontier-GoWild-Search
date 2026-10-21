@@ -150,8 +150,9 @@ class ItineraryTests(unittest.TestCase):
         self.assertIn("Solo with your $100 voucher: ≈$90.00", report)  # $45/leg PR tax estimate
         self.assertIn("OVERALL TOP 3 — THE PERFECT TRIP FOR TWO", report)
         self.assertIn("Best GoWild bets still to be released", report)
-        # No GoWild yet, so the trip for two is both of you on Discount Den: 2 x $188 - $100.
-        self.assertIn("$276.00 for two (both Discount Den, one booking)", report)
+        # No GoWild yet, so the trip for two is both of you on Discount Den: 2 x $188 minus
+        # the voucher on your own base fare only ($54 + $44).
+        self.assertIn("$278.00 for two (both Discount Den, one booking)", report)
 
     def desert_trip(self, back_gw=15.0):
         return by_key(
@@ -209,31 +210,41 @@ class ItineraryTests(unittest.TestCase):
         self.assertIn("$34.00 GoWild", report)
 
     def test_couple_and_voucher(self):
+        # The voucher is non-transferable: it only ever covers YOUR base fare.
         items = tp.build_itineraries("desert", self.desert_trip(), NOW)
         couple = next(i for i in items if i["category"] == "Couple")
-        # Partner DD $49 + $59; est. base = (fare - $15.40 domestic taxes) / 1.075 each.
-        self.assertEqual(71.81, couple["voucher"])
+        # You fly GoWild both ways ($0.01 base), so the voucher covers nothing here.
+        self.assertEqual(0.0, couple["voucher"])
         self.assertEqual(29.0, couple["user_total"])
-        self.assertEqual(round(29 + 108 - 71.81, 2), couple["total"])
+        self.assertEqual(29 + 108, couple["total"])
         self.assertEqual([], tp.rule_problems(couple))
         self.assertEqual(couple["total"], tp.reprice(couple, self.desert_trip(), NOW))
         dd = next(i for i in items if i["category"] == "Discount Den")
+        # Your DD $49 + $59; est. base = (fare - $15.40 domestic taxes) / 1.075 each.
+        self.assertEqual(71.81, dd["voucher"])
         self.assertAlmostEqual(108 - 71.81, tp._effective(dd))
-        # Both on Discount Den on one booking: the voucher covers both base fares (capped).
+        # Both on Discount Den on one booking: still only your base fare.
         both = next(i for i in items if i["category"] == "Couple DD")
-        self.assertEqual(100, both["voucher"])
-        self.assertEqual(2 * 108 - 100, both["total"])
+        self.assertEqual(71.81, both["voucher"])
+        self.assertEqual(round(2 * 108 - 71.81, 2), both["total"])
         self.assertEqual([], tp.rule_problems(both))
         self.assertEqual(both["total"], tp.reprice(both, self.desert_trip(), NOW))
-        # Two travellers: each pays the taxes, so the voucher covers 2 x one person's base.
         cheap = by_key(
             flight("SFO", "ONT", "2026-12-05T21:56:00", "2026-12-05T23:23:00", dd=18.98),
             flight("ONT", "SFO", "2026-12-08T19:26:00", "2026-12-08T21:01:00", dd=18.98),
         )
         two = next(i for i in tp.build_itineraries("desert", cheap, NOW) if i["category"] == "Couple DD")
         one_base = 2 * (18.98 - 15.40) / 1.075
-        self.assertAlmostEqual(round(2 * one_base, 2), two["voucher"])
-        self.assertAlmostEqual(round(2 * 37.96 - 2 * one_base, 2), two["total"], places=1)
+        self.assertAlmostEqual(round(one_base, 2), two["voucher"])
+        self.assertAlmostEqual(round(2 * 37.96 - one_base, 2), two["total"], places=1)
+        # A mix: the voucher covers your Discount Den flight's base, on its own booking.
+        mixed = by_key(
+            flight("SFO", "LAS", "2026-11-06T18:30:00", "2026-11-06T20:00:00", gw=79.0, dd=49.0),
+            flight("PSP", "SFO", "2026-11-08T19:00:00", "2026-11-08T20:30:00", gw=15.0, dd=59.0),
+        )
+        mix = next(i for i in tp.build_itineraries("desert", mixed, NOW) if i["category"] == "Couple")
+        self.assertEqual("GoWild + Discount Den", mix["user_category"])
+        self.assertEqual(round((49 - 15.40) / 1.075, 2), mix["voucher"])
         # Same dates and airports: the list keeps the cheaper way for two (GoWild here).
         self.assertEqual(["Couple"], [i["category"] for i in tp.rank_trip(items)["couple"]])
         # The voucher caps at $100, and with separate tickets only the largest ticket counts.

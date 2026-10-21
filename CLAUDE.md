@@ -152,8 +152,10 @@ undetected-chromedriver.
   runs them. `report` alone rebuilds from saved pages without re-fetching. `screen` adds a
   **GoWild sweep** (exact page for every valid leave/return date on every served Bay Area
   route — GoWild, incl. early-booking releases, never shows on calendars). Report ranks
-  **trips for two** (user on GoWild + partner on Discount Den on the same flights, $100
-  voucher on the partner's estimated base fare), solo GoWild, and solo Discount Den + voucher.
+  **trips for two** (user on GoWild + partner on Discount Den on the same flights, or both
+  on Discount Den on one booking), solo GoWild, and solo Discount Den + voucher. The $100
+  voucher is non-transferable (Frontier FAQ): it only covers the holder's own estimated base
+  fare, on one booking, once — never the partner's fare or a GoWild ($0.01 base) ticket.
   GoWild for weeks-out dates isn't released yet, so run `watch` **daily during the trip
   window**: it re-checks shortlisted legs whose GoWild window is open and emails only when a
   new GoWild round trip appears. Data in `results/trip_planner/`. Tests: `tests/test_trip_planner.py`.

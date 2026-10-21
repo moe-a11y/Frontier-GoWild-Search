@@ -160,7 +160,8 @@ DAYS_OFF = {"2026-11-26", "2026-11-27", "2026-12-25", "2027-01-01",
             "2027-01-18", "2027-02-15"}
 
 DD_TARGET = 150          # Discount Den round trips under this are called out
-VOUCHER = 100            # travel voucher: covers base fare only, not taxes/fees
+VOUCHER = 100            # travel voucher: base fare only, not taxes/fees; one booking,
+                         # and only the holder's own fare (Frontier: non-transferable)
 # Rough taxes/fees per one-way ticket outside the continental US, for the
 # voucher's base-fare estimate (domestic tickets use the US tax formula).
 TAX_EST_TERRITORY, TAX_EST_INTL = 45, 85
@@ -656,6 +657,17 @@ def _voucher(flights, prices, self_connect, travellers=1):
     return round(min(VOUCHER, max(bases) if self_connect else sum(bases)), 2)
 
 
+def _your_voucher(flights, fares, self_connect):
+    """The voucher covers only your own fare: base fare on the flights you pay
+    Discount Den on (GoWild's base fare is $0.01), on one booking."""
+    paid = [(f, p) for f, (p, kind) in zip(flights, fares) if kind == "Discount Den" and p]
+    if not paid:
+        return 0.0
+    all_dd = len(paid) == len(flights)
+    # Discount Den flights alongside GoWild ones are their own booking(s).
+    return _voucher(*zip(*paid), self_connect or not all_dd)
+
+
 def pto_days(leave, home):
     """Weekdays away (DAYS_OFF excluded); an evening departure costs no PTO."""
     n, day = 0, leave.date()
@@ -759,23 +771,23 @@ def _add_itinerary(best, trip_key, origin, g_in, g_out, home, out, back, now):
         stops=sum(len(f["legs"]) - 1 for f in flights) + len(out) + len(back) - 2,
         self_connect=self_connect, open_jaw=origin != home or g_in != g_out,
         partner_total=partner_total,
-        voucher=0.0 if partner_total is None else _voucher(flights, partner, self_connect),
         ground_days=round((boundary(back[0]) - boundary(out[-1], True)).total_seconds() / 86400, 1))
     two_seats = all((_seats_left(f.get("discountDenFareSeatsRemaining")) or 2) >= 2 for f in flights)
     entries = []
     for category, (total, fares) in _price(flights, now).items():
-        entries.append(dict(common, category=category, total=total, fares=fares))
+        voucher = _your_voucher(flights, fares, self_connect)
+        entries.append(dict(common, category=category, total=total, fares=fares, voucher=voucher))
         if category == "Discount Den" and two_seats:
-            voucher = _voucher(flights, [p for p, _ in fares], self_connect, travellers=2)
+            # Both on Discount Den on one booking; the voucher still only covers you.
             entries.append(dict(common, category="Couple DD", fares=fares, user_total=total,
                                 user_category=category, voucher=voucher,
                                 total=round(2 * total - voucher, 2)))
-        # You on GoWild, your partner on Discount Den on the same flights,
-        # their base fare reduced by the voucher.
+        # You on GoWild (or the cheaper mix), your partner on Discount Den on the
+        # same flights; the voucher can't pay for their fare.
         if category in ("GoWild", "GoWild + Discount Den") and partner_total is not None:
             entries.append(dict(common, category="Couple", fares=fares, user_total=total,
-                                user_category=category,
-                                total=round(total + partner_total - common["voucher"], 2)))
+                                user_category=category, voucher=voucher,
+                                total=round(total + partner_total - voucher, 2)))
     for item in entries:
         item["score"] = _score(item)
         k = (item["category"], leave.date(), arrive_home.date(), g_in, g_out)
@@ -874,18 +886,18 @@ def _trip_lines(rank, i, now, tag=""):
         few = [_seats_left(f.get("discountDenFareSeatsRemaining")) for f in i["out"] + i["back"]]
         few = min((n for n in few if n is not None), default=None)
         lines.append(f"      Both of you: 2 × ${i['user_total']:.2f} Discount Den − ${voucher:.2f} voucher "
-                     "on both base fares (est.)"
+                     "on your base fare (est.)"
                      + (f"  ⚠️ only {few} seat{'s' if few > 1 else ''} left at this fare" if few is not None and few < 2 else ""))
     elif i["category"] == "Couple":
         lines.append(f"      You ${i['user_total']:.2f} {i['user_category']} + partner ${partner:.2f} Discount Den "
-                     f"− ${voucher:.2f} voucher on their base fare (est.)")
+                     + (f"− ${voucher:.2f} voucher on your Discount Den base fare (est.)" if voucher
+                        else "(the voucher can't cover GoWild or your partner's fare)"))
     elif i["category"] == "Discount Den":
         lines.append(f"      Solo with your ${VOUCHER} voucher: ≈${i['total'] - voucher:.2f} "
                      f"(voucher covers est. ${voucher:.2f} of base fare)"
                      + (f"  ★ under ${DD_TARGET}" if i["total"] < DD_TARGET else ""))
     elif partner is not None:
-        lines.append(f"      Partner on the same flights: ${partner:.2f} Discount Den (standard if none), "
-                     f"≈${partner - voucher:.2f} after the ${VOUCHER} voucher (est.)")
+        lines.append(f"      Partner on the same flights: ${partner:.2f} Discount Den (standard if none)")
     n = len(i["out"])
     lines += _flight_lines("OUT ", i["out"], i["fares"][:n], now)
     lines += _flight_lines("BACK", i["back"], i["fares"][n:], now)
@@ -910,8 +922,9 @@ def build_report(by_trip, coverage, now, validation=None, status=None):
            "assumes Thanksgiving Thu/Fri, Dec 25, Jan 1, MLK and Presidents' Day off, "
            "and no PTO for a weekday departure at/after 17:00.",
            "For two = you on GoWild + your partner on Discount Den on the SAME flights "
-           f"(a separate booking), with the ${VOUCHER} voucher on their base fare — or both of "
-           "you on Discount Den on one booking, the voucher covering both base fares. Frontier "
+           "(a separate booking), or both of you on Discount Den on one booking. The "
+           f"${VOUCHER} voucher is non-transferable: it covers only YOUR base fare (none on "
+           "GoWild, whose base is $0.01), once; unused value is lost. Frontier "
            "quotes totals only, so the voucher's base-fare share is estimated (domestic: "
            "US tax formula; Puerto Rico/USVI ~$45, international ~$85 taxes per one-way).",
            f"Lists are ranked by price + ${SCORE_HOUR}/hour of travel, so a much longer "
@@ -1085,13 +1098,13 @@ def reprice(item, flights_by, now):
         dd = priced.get("Discount Den")
         if not dd:
             return None
-        return round(2 * dd[0] - _voucher(fresh, [p for p, _ in dd[1]], item["self_connect"], 2), 2)
+        return round(2 * dd[0] - _your_voucher(fresh, dd[1], item["self_connect"]), 2)
     if item["category"] == "Couple":
         user = priced.get(item["user_category"])
         partner = [_cash(f) for f in fresh]
         if not user or None in partner:
             return None
-        return round(user[0] + sum(partner) - _voucher(fresh, partner, item["self_connect"]), 2)
+        return round(user[0] + sum(partner) - _your_voucher(fresh, user[1], item["self_connect"]), 2)
     hit = priced.get(item["category"])
     return hit[0] if hit else None
 
