@@ -357,6 +357,21 @@ class ItineraryTests(unittest.TestCase):
         self.assertNotIn(("ATL", "SJU", "2027-01-12"), jobs)  # not on sale in these calendars
         self.assertEqual([], tp.hub_sweep_jobs("puerto_rico", fares))  # no hub_sweep set
 
+    def test_best_per_destination_list(self):
+        flights = by_key(
+            flight("BUF", "SJU", "2027-01-09T06:00:00", "2027-01-09T14:00:00", dd=99.0),
+            flight("SJU", "BUF", "2027-01-17T12:00:00", "2027-01-17T19:00:00", dd=99.0),
+            flight("BUF", "MDE", "2027-01-09T06:00:00", "2027-01-09T16:00:00", dd=199.0),
+            flight("MDE", "BUF", "2027-01-17T08:00:00", "2027-01-17T20:00:00", dd=199.0),
+        )
+        items = tp.build_itineraries("buffalo", flights, NOW)
+        per_trip, _ = tp.report_picks({"buffalo": items})
+        # San Juan is cheaper, but Medellin still gets its own line.
+        self.assertEqual(["SJU", "MDE"], [i["gateway_in"] for i in per_trip["buffalo"]["by_group"]])
+        report = tp.build_report({"buffalo": items}, ["Coverage: test"], NOW)
+        self.assertIn("Best per destination", report)
+        self.assertIn("from BUF · stopovers up to 3 days", report)
+
     def test_voucher_expiry(self):
         from unittest import mock
         with mock.patch.object(tp, "VOUCHER_EXPIRES", NOW):

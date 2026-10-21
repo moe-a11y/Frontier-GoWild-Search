@@ -136,7 +136,7 @@ TRIPS = {
         groups=[("SJO", "LIR"), ("GUA", "SAL"), ("SAP", "TGU", "RTB"),
                 ("SDQ", "PUJ", "STI", "POP"), ("MBJ", "KIN"),
                 ("MDE", "BOG", "CTG"), ("STT", "STX")],
-        window=WINDOW_NOV_DEC, days=(3, 5),
+        window=WINDOW_NOV_DEC, days=(3, 5), list_by_group=True,
         hubs=("MCO", "MIA", "FLL", "ATL", "PHL", "SJU"),
     ),
     # Oct 21 follow-up: from Buffalo after the holidays, 6+ days, anywhere outside
@@ -158,7 +158,7 @@ TRIPS = {
         groups=[("SJU", "BQN", "PSE"), ("SDQ", "PUJ", "STI"), ("MBJ",), ("SJO",), ("GUA", "SAL"),
                 ("SAP",), ("MDE", "BOG", "CTG"), ("CUN",), ("MEX", "GDL")],
         window=("2026-12-19", "2027-02-28"), days=(6, 12),
-        origins=("BUF",), stopover_days=3,
+        origins=("BUF",), stopover_days=3, list_by_group=True,
         # Frontier's only winter nonstops from BUF are ATL, MCO and TPA; SJU is the
         # Caribbean hub.
         hubs=("MCO", "ATL", "TPA", "SJU"),
@@ -994,9 +994,9 @@ def _trip_lines(rank, i, now, tag=""):
                      "on your base fare (est.)"
                      + (f"  ⚠️ only {few} seat{'s' if few > 1 else ''} left at this fare" if few is not None and few < 2 else ""))
     elif i["category"] == "Couple":
-        lines.append(f"      You ${i['user_total']:.2f} {i['user_category']} + partner ${partner:.2f} Discount Den "
-                     + (f"− ${voucher:.2f} voucher on your Discount Den base fare (est.)" if voucher
-                        else "" if expired else "(the voucher can't cover GoWild or your partner's fare)"))
+        lines.append((f"      You ${i['user_total']:.2f} {i['user_category']} + partner ${partner:.2f} Discount Den "
+                      + (f"− ${voucher:.2f} voucher on your Discount Den base fare (est.)" if voucher
+                         else "" if expired else "(the voucher can't cover GoWild or your partner's fare)")).rstrip())
     elif i["category"] == "Discount Den" and expired:
         if i["total"] < DD_TARGET:
             lines.append(f"      ★ under ${DD_TARGET}")
@@ -1021,6 +1021,20 @@ def _best_per_trip(items, n, key):
     return _distinct(sorted(items, key=key), n, key=lambda i: i["trip"])
 
 
+def _best_per_group(key, items):
+    """The best trip for two (else the best GoWild, else Discount Den) into each
+    gateway group, so one popular destination can't fill every list."""
+    out = []
+    for group in TRIPS[key]["groups"]:
+        pool = [i for i in items if i["gateway_in"] in group and i["category"] != "GoWild pending"]
+        for cats in (("Couple", "Couple DD"), ("GoWild", "GoWild + Discount Den"), ("Discount Den",)):
+            hits = [i for i in pool if i["category"] in cats]
+            if hits:
+                out.append(min(hits, key=lambda i: i["score"]))
+                break
+    return sorted(out, key=lambda i: i["score"])
+
+
 def report_picks(by_trip):
     """Every list the report shows: ({trip: lists}, overall and solo picks).
     The overall and solo picks are scored over all itineraries, not just the lists."""
@@ -1030,7 +1044,8 @@ def report_picks(by_trip):
         ranked, combo = rank_trip(items), TRIPS[key].get("combo")
         per_trip[key] = dict(ranked, dd_list=_distinct_trips(ranked["dd_target"] + ranked["dd"], 5),
                              combo=_distinct_trips(sorted(combo_items(items, combo), key=score), 5)
-                             if combo else [])
+                             if combo else [],
+                             by_group=_best_per_group(key, items) if TRIPS[key].get("list_by_group") else [])
         couples += [i for i in items if i["category"] in ("Couple", "Couple DD")]
         solo_gw += [i for i in items if i["category"] in ("GoWild", "GoWild + Discount Den")]
         solo_dd += [i for i in items if i["category"] == "Discount Den"]
@@ -1084,6 +1099,9 @@ def build_report(by_trip, coverage, now, validation=None, status=None):
             out.append(f"\n{combo['title']} — for two, at least {combo['min_there']:g} days there "
                        "(top 5; ranked like the overall picks):")
             out += _lines(ranked["combo"], now, "no combo itineraries found")
+        if ranked["by_group"]:
+            out.append("\nBest per destination (for two if possible; ranked like the overall picks):")
+            out += _lines(ranked["by_group"], now, "")
         out.append("\nGoWild round trips for you (top 5; at least one GoWild flight, the cheaper "
                    "of GoWild/Discount Den on each):")
         out += _lines(ranked["gowild"], now, "no GoWild fares released yet for these dates — see the watch list")
@@ -1210,7 +1228,7 @@ def shown_items(by_trip):
     """Every itinerary the report lists, overall and solo picks included."""
     per_trip, overall = report_picks(by_trip)
     shown = [i for lists in per_trip.values()
-             for name in ("couple", "combo", "gowild", "dd_list", "pending") for i in lists[name]]
+             for name in ("couple", "combo", "by_group", "gowild", "dd_list", "pending") for i in lists[name]]
     shown += [i for picks in overall.values() for i in picks]
     return _distinct(shown, len(shown), key=_itinerary_id)
 
