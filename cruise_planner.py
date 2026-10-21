@@ -48,6 +48,7 @@ WINDOW = (date(2026, 11, 1), date(2026, 12, 31))
 MAX_NIGHTS = 10
 HUBS = ("DEN", "LAS", "ATL", "MCO", "PHL", "ORD")
 EMBARK_BY = dtime(11, 0)        # be at the port by about 11:00 on sailing day
+NEEDS_BED_BEFORE = dtime(5, 0)  # landing before this (or the day before) means a hotel night
 DOCK = dtime(8, 30)             # ships dock early; allow time to get off and clear
 LEAVE_SHIP_BUFFER_H = 2.5       # docking -> leaving the terminal, then the transfer
 HOTEL_EST = 150                 # scoring only: a pre/post-cruise hotel night
@@ -249,7 +250,7 @@ def cruise_packages(cruise, flights_by, now, keep=3):
             for way in tp._ways(flights_by, bay, gw, day, HUBS, True):
                 arrive = tp._local(way[-1], True)
                 if arrive <= latest:
-                    ways_out.append((way, note, arrive.date() < sail))
+                    ways_out.append((way, note, arrive < datetime.combine(sail, NEEDS_BED_BEFORE)))
     ways_back = [] if outs_ else [([], "ends in the Bay Area", False)]
     for (gw, transfer, note), bay in product(outs_, tp.BAY_AREA):
         earliest = datetime.combine(debark, DOCK) + timedelta(hours=LEAVE_SHIP_BUFFER_H + transfer)
@@ -358,7 +359,7 @@ def build_report(packages, coverage, now):
            "including port charges and government taxes/fees (per VacationsToGo); gratuities extra "
            f"(~${GRATUITY_EST}/person/night shown as an estimate).",
            "Flights: real Frontier fares from SFO/SJC/OAK, landing by ~11:00 on sailing day after the "
-           "airport-to-port transfer (or the day before, + hotel night), and leaving after the ship "
+           "airport-to-port transfer (or the day before / before 05:00, + hotel night), and leaving after the ship "
            f"docks (~{DOCK:%H:%M}) + {LEAVE_SHIP_BUFFER_H:g} h + transfer. You pay the cheaper of GoWild / "
            "Discount Den per flight; partner Discount Den — or both on Discount Den on one booking.",
            "The $100 voucher only covers YOUR base fare and must be used to book before it expires, "

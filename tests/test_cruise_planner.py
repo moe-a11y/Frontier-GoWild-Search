@@ -60,6 +60,13 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(round(338 + top["flights_two"], 2), top["total"])
         self.assertEqual(0, top["hotel_nights"])  # red-eye lands the morning of sailing
 
+    def test_after_midnight_landing_needs_a_hotel_night(self):
+        flights = by_key(
+            flight("SFO", "MCO", "2026-11-29T15:00:00", "2026-11-30T00:23:00", dd=49.0),
+            flight("MCO", "SFO", "2026-12-04T15:00:00", "2026-12-04T18:00:00", dd=59.0),
+        )
+        self.assertEqual(1, cp.cruise_packages(self.c, flights, NOW)[0]["hotel_nights"])
+
     def test_bay_area_port_needs_no_flights(self):
         sf = cp.candidates([cruise(**{"from": "San Francisco, CA", "to": "San Francisco, CA"})])[0]
         best = cp.cruise_packages(sf, {}, NOW)
