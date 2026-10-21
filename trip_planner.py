@@ -764,6 +764,7 @@ def _add_itinerary(best, trip_key, origin, g_in, g_out, home, out, back, now):
         # their base fare reduced by the voucher.
         if category in ("GoWild", "GoWild + Discount Den") and partner_total is not None:
             entries.append(dict(common, category="Couple", fares=fares, user_total=total,
+                                user_category=category,
                                 total=round(total + partner_total - common["voucher"], 2)))
     for item in entries:
         item["score"] = _score(item)
@@ -857,7 +858,7 @@ def _trip_lines(rank, i, now, tag=""):
     lines = [head + (f"  [{'; '.join(extras)}]" if extras else "")]
     partner, voucher = i.get("partner_total"), i.get("voucher", 0)
     if i["category"] == "Couple":
-        lines.append(f"      You ${i['user_total']:.2f} GoWild + partner ${partner:.2f} Discount Den "
+        lines.append(f"      You ${i['user_total']:.2f} {i['user_category']} + partner ${partner:.2f} Discount Den "
                      f"− ${voucher:.2f} voucher on their base fare (est.)")
     elif i["category"] == "Discount Den":
         lines.append(f"      Solo with your ${VOUCHER} voucher: ≈${i['total'] - voucher:.2f} "
