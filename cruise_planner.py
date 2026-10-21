@@ -24,7 +24,8 @@ Phases (resumable; flight data shared with trip_planner in results/trip_planner/
   calendars  Frontier month calendars for port airports not already covered
   flights    exact Frontier pages for every candidate's flight dates
   report     rank cruise + flight packages, save, email
-  all        ticker -> calendars -> flights -> report
+  validate   final review: re-fetch every listed package's flights, then report
+  all        ticker -> calendars -> flights -> validate
 
     python3 cruise_planner.py all [--no-email]
 """
@@ -366,10 +367,22 @@ def _pkg_lines(n, p, now):
     return lines
 
 
-def build_report(packages, coverage, now):
+def report_lists(packages):
+    """[(title, packages)] in report order: overall, value per night, then by region."""
+    ranked = sorted(packages, key=lambda p: p["score"])
+    lists = [("OVERALL TOP 5 (best score, one per cruise)", ranked[:5]),
+             ("BEST VALUE PER NIGHT (top 5)",
+              sorted(packages, key=lambda p: p["total"] / p["cruise"]["nights"])[:5])]
+    lists += [(title.upper(), [p for p in ranked if any(k in p["cruise"]["from"] for k in keys)][:5])
+              for title, keys in REGIONS]
+    return lists
+
+
+def build_report(packages, coverage, now, validation=None):
     out = ["=" * 64, "CRUISE + FRONTIER FLIGHTS — NOVEMBER–DECEMBER 2026", "=" * 64,
            f"Generated {now.astimezone(ZoneInfo('America/Los_Angeles')):%Y-%m-%d %H:%M %Z}. Nothing booked.",
-           "Cruise prices: VacationsToGo 90-day ticker, per person, double occupancy (x2 here), "
+           "Cruise prices: the cheapest cabin on each VacationsToGo deal page (the 90-day ticker's "
+           "price if the page couldn't be read), per person, double occupancy (x2 here), "
            "including port charges and government taxes/fees (per VacationsToGo); gratuities extra "
            f"(~${GRATUITY_EST}/person/night shown as an estimate).",
            "Flights: real Frontier fares from SFO/SJC/OAK, landing by ~11:00 on sailing day after the "
@@ -378,22 +391,17 @@ def build_report(packages, coverage, now):
            "Discount Den per flight; partner Discount Den — or both on Discount Den on one booking.",
            "The $100 voucher only covers YOUR base fare and must be used to book before it expires, "
            "so totals don't assume it. Score = total + $60/PTO day + $5/flight hour + $150/hotel night.", ""]
-    ranked = sorted(packages, key=lambda p: p["score"])
-    out += ["OVERALL TOP 5 (best score, one per cruise)", "-" * 64]
-    out += [line for n, p in enumerate(ranked[:5], 1) for line in _pkg_lines(n, p, now)]
-    cheap = sorted(packages, key=lambda p: p["total"] / p["cruise"]["nights"])
-    out += ["", "BEST VALUE PER NIGHT (top 5)", "-" * 64]
-    out += [line for n, p in enumerate(cheap[:5], 1) for line in _pkg_lines(n, p, now)]
-    for title, keys in REGIONS:
-        pool = [p for p in ranked if any(k in p["cruise"]["from"] for k in keys)]
-        out += ["", title.upper(), "-" * 64]
-        out += [line for n, p in enumerate(pool[:5], 1) for line in _pkg_lines(n, p, now)] or ["   (none)"]
+    for n_list, (title, pool) in enumerate(report_lists(packages)):
+        out += ([""] if n_list else []) + [title, "-" * 64]
+        out += [line for n, p in enumerate(pool, 1) for line in _pkg_lines(n, p, now)] or ["   (none)"]
+    if validation:
+        out += ["", "-" * 64, "VALIDATION (final review)"] + validation
     out += ["", "-" * 64, "COVERAGE"] + coverage
     return "\n".join(out) + "\n"
 
 
-def make_report(now=None):
-    now = now or datetime.now(timezone.utc)
+def build_packages(now):
+    """(candidates, best package per cruise, cruises with no flights that fit)."""
     cands = with_details(candidates(load_deals()), load_details())
     latest = tp.latest_records(tp.read_jsonl(tp.FLIGHTS))
     flights_by = {k: r["flights"] for k, r in latest.items() if r["status"] == "ok"}
@@ -401,12 +409,65 @@ def make_report(now=None):
     for c in cands:
         pk = cruise_packages(c, flights_by, now, keep=1)
         (packages if pk else no_flights).extend(pk or [c])
+    return cands, packages, no_flights
+
+
+def shown_packages(packages):
+    """Every package the report lists, once each."""
+    return list({p["cruise"]["id"]: p for _, pool in report_lists(packages) for p in pool}.values())
+
+
+def _package_legs(packages):
+    legs = []
+    for p in packages:
+        for f in p["out"] + p["back"]:
+            o, d = tp._ends(f)
+            leg = dict(origin=o, destination=d, date=f["legs"][0]["departureDate"][:10])
+            if leg not in legs:
+                legs.append(leg)
+    return legs
+
+
+def validation_lines(shown, n_legs, packages):
+    """How each listed package re-priced after its flight pages were re-fetched."""
+    fresh = {p["cruise"]["id"]: p for p in packages}
+    flight_ids = lambda p: [tp._flight_id(f) for f in p["out"] + p["back"]]
+    lines = [f"Re-fetched {n_legs} Frontier pages behind the {len(shown)} packages listed, "
+             "just before this report."]
+    for p in shown:
+        q, c = fresh.get(p["cruise"]["id"]), p["cruise"]
+        name = f"{c['id']} {c.get('ship', '')} {c['sail']}"
+        if q is None:
+            lines.append(f"  {name}: no Frontier flights fit any more — dropped")
+        elif round(q["total"], 2) != round(p["total"], 2) or flight_ids(q) != flight_ids(p):
+            lines.append(f"  {name}: ${p['total']:,.2f} → ${q['total']:,.2f}"
+                         + ("" if flight_ids(q) == flight_ids(p) else " (different flights now)"))
+    if len(lines) == 1:
+        lines.append("  Every listed package re-priced the same: all passed.")
+    return lines
+
+
+def make_report(now=None, validate_fetch=None):
+    """Build and save the report. With validate_fetch(legs, refresh=True), first
+    re-fetch the flights of every listed package and report what changed."""
+    now = now or datetime.now(timezone.utc)
+    cands, packages, no_flights = build_packages(now)
+    validation = None
+    if validate_fetch:
+        shown = shown_packages(packages)
+        legs = _package_legs(shown)
+        print(f"Validation: re-checking {len(legs)} legs behind {len(shown)} packages", flush=True)
+        validate_fetch(legs, refresh=True)
+        now = datetime.now(timezone.utc)
+        cands, packages, no_flights = build_packages(now)
+        validation = validation_lines(shown, len(legs), packages)
     coverage = [f"Ticker deals: {len(load_deals())}; Nov–Dec, <= {MAX_NIGHTS} nights, reachable ports: {len(cands)}",
-                f"Deal pages read: {len(details)}; cruises with a valid flight plan: {len(packages)}",
+                f"Deal pages with cabin prices: {sum(bool(c.get('rates')) for c in cands)} of {len(cands)}; "
+                f"cruises with a valid flight plan: {len(packages)}",
                 f"Without one (no Frontier flights that fit): {len(no_flights)}"
                 + (": " + ", ".join(f"{c['id']} {c['from'][:20]} {c['sail']}" for c in no_flights[:12]) if no_flights else ""),
                 f"Data: {OUTPUT} (cruises) and {tp.OUTPUT} (flights)"]
-    report = build_report(packages, coverage, now)
+    report = build_report(packages, coverage, now, validation)
     path = OUTPUT / f"report_{now.astimezone():%Y%m%d_%H%M%S}.txt"
     path.write_text(report)
     print(report)
@@ -416,7 +477,7 @@ def make_report(now=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("phase", choices=("ticker", "calendars", "flights", "report", "all"))
+    ap.add_argument("phase", choices=("ticker", "calendars", "flights", "report", "validate", "all"))
     ap.add_argument("--no-email", action="store_true")
     args = ap.parse_args()
     from gowild_deal_report import build_driver
@@ -434,8 +495,8 @@ def main():
                     ("ok", "no_service", "unverified", "http_error"), ("blocked", "error"))
     if args.phase in ("flights", "all"):
         tp.fetch_flights(flight_jobs(cands))
-    if args.phase in ("report", "all"):
-        report, packages = make_report()
+    if args.phase in ("report", "validate", "all"):
+        report, packages = make_report(validate_fetch=tp.fetch_flights if args.phase != "report" else None)
         if not args.no_email:
             from gowild_deal_report import load_env, send_email
             send_email(f"Cruise + Frontier flights — {len(packages)} Nov–Dec packages", report, load_env())

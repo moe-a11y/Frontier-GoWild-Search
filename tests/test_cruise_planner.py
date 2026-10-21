@@ -82,6 +82,19 @@ class PackageTests(unittest.TestCase):
         report = cp.build_report(best, ["x"], NOW)
         self.assertIn("No flights: sails from and returns to the Bay Area", report)
 
+    def test_validation_lines(self):
+        def pkgs(back_dd):
+            flights = by_key(flight("SFO", "MCO", "2026-11-29T22:00:00", "2026-11-30T06:15:00", dd=99.0),
+                             flight("MCO", "SFO", "2026-12-04T15:00:00", "2026-12-04T18:00:00", dd=back_dd))
+            return cp.cruise_packages(self.c, flights, NOW, keep=1)
+        before = pkgs(59.0)
+        self.assertEqual(2, len(cp._package_legs(before)))
+        same = cp.validation_lines(before, 2, pkgs(59.0))
+        self.assertIn("all passed", same[-1])
+        dearer = "\n".join(cp.validation_lines(before, 2, pkgs(69.0)))
+        self.assertIn(f"${before[0]['total']:,.2f} → ${before[0]['total'] + 20:,.2f}", dearer)
+        self.assertIn("dropped", "\n".join(cp.validation_lines(before, 2, [])))
+
     def test_no_valid_flights_means_no_package(self):
         late = by_key(flight("SFO", "MCO", "2026-11-30T09:00:00", "2026-11-30T17:30:00", dd=49.0),
                       flight("MCO", "SFO", "2026-12-04T15:00:00", "2026-12-04T18:00:00", dd=59.0))
