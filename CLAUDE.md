@@ -157,6 +157,10 @@ undetected-chromedriver.
   trip also lists **Death Valley + Joshua Tree combos**: LAS one way, ONT/PSP the other). The $100
   voucher is non-transferable (Frontier FAQ): it only covers the holder's own estimated base
   fare, on one booking, once — never the partner's fare or a GoWild ($0.01 base) ticket.
+  Trips can set their own `origins` (the **Buffalo** trip: BUF → anywhere outside the continental
+  US, Dec 19–Feb 28, 6–12 days), `stopover_days` (separate-ticket stopovers up to N days at a hub)
+  and `hub_sweep` (exact pages for hub legs on every date, since GoWild never shows on calendars).
+  The $100 voucher expired midnight Pacific Oct 20 (`VOUCHER_EXPIRES`); later builds don't use it.
   GoWild for weeks-out dates isn't released yet, so run `watch` **daily during the trip
   window**: it re-checks shortlisted legs whose GoWild window is open and emails only when a
   new GoWild round trip appears. Data in `results/trip_planner/`. Tests: `tests/test_trip_planner.py`.

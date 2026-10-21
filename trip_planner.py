@@ -160,6 +160,10 @@ TRIPS = {
         window=("2026-12-19", "2027-02-28"), days=(6, 12),
         origins=("BUF",), stopover_days=3,
         hubs=("MCO", "ATL", "PHL", "MIA", "FLL", "TPA", "SJU"),
+        # GoWild doesn't show on calendars: also check the main hubs' legs to the
+        # beach/Puerto Rico gateways on every date they could be flown.
+        hub_sweep=dict(hubs=("MCO", "ATL", "PHL"),
+                       gateways=("SJU", "BQN", "PSE", "SDQ", "PUJ", "STI", "MBJ", "CUN")),
     ),
 }
 
@@ -567,6 +571,40 @@ def sweep_jobs(trip_key, fares):
     return jobs
 
 
+def hub_sweep_jobs(trip_key, fares):
+    """A trip's optional hub_sweep=dict(hubs=..., gateways=...): exact pages for the
+    separate-ticket legs on every date they could be flown and the calendars show
+    on sale — origin->hub on each leave date and hub->gateway up to stop_days later,
+    mirrored on the way home — since GoWild seats never show on calendars."""
+    trip = TRIPS[trip_key]
+    spec = trip.get("hub_sweep")
+    if not spec:
+        return []
+    jobs, seen, extra = [], set(), stop_days(trip)
+
+    def add(o, d, day):
+        k = (o, d, day.isoformat())
+        if k in fares and k not in seen:
+            seen.add(k)
+            jobs.append(dict(origin=o, destination=d, date=k[2]))
+
+    for gw in spec.get("gateways", trip["gateways"]):
+        pairs = date_pairs(trip, gw)
+        for hub in spec.get("hubs", trip["hubs"]):
+            if hub == gw:
+                continue
+            for home in origins(trip):
+                for day in sorted({a for a, _ in pairs}):
+                    add(home, hub, day)
+                    for k in range(extra + 1):
+                        add(hub, gw, day + timedelta(days=k))
+                for day in sorted({b for _, b in pairs}):
+                    add(hub, home, day)
+                    for k in range(extra + 1):
+                        add(gw, hub, day - timedelta(days=k))
+    return jobs
+
+
 def run_screen(trip_keys, self_connect, sweep=True):
     fares = load_calendar_fares(read_jsonl(CALENDARS))
     if not fares:
@@ -587,13 +625,16 @@ def run_screen(trip_keys, self_connect, sweep=True):
             for leg in c["legs"]:
                 add(leg)
         legs = len(jobs) - before
-        swept = sweep_jobs(key, fares) if sweep else []
+        swept = sweep_jobs(key, fares) + hub_sweep_jobs(key, fares) if sweep else []
         for leg in swept:
             add(leg)
         print(f"{TRIPS[key]['title']}: {len(cands)} calendar candidates, "
               f"{len(picked[key])} shortlisted ({legs} legs) + GoWild sweep "
               f"{len(jobs) - before - legs} new legs")
-    SHORTLIST.write_text(json.dumps(dict(trips=picked, jobs=jobs), indent=2))
+    # Keep other trips' shortlists when screening a subset.
+    old = json.loads(SHORTLIST.read_text()) if SHORTLIST.exists() else dict(trips={}, jobs=[])
+    old_jobs = [j for j in old["jobs"] if (j["origin"], j["destination"], j["date"]) not in seen]
+    SHORTLIST.write_text(json.dumps(dict(trips={**old["trips"], **picked}, jobs=old_jobs + jobs), indent=2))
     print(f"{len(jobs)} exact route/date pages to check")
     return jobs
 

@@ -347,6 +347,16 @@ class ItineraryTests(unittest.TestCase):
         # The Bay Area trips still cap a separate-ticket connection at 24 h.
         self.assertTrue(any("self-connection" in p for p in tp.rule_problems(dict(dd, trip="puerto_rico"))))
 
+    def test_hub_sweep_covers_stopover_days(self):
+        days = lambda o, d, a, b: {(o, d, f"2027-01-{n:02d}"): (99.0, False) for n in range(a, b)}
+        fares = {**days("BUF", "MCO", 1, 32), **days("MCO", "SJU", 1, 32), **days("SJU", "MCO", 1, 32),
+                 **days("MCO", "BUF", 1, 32)}
+        jobs = {(j["origin"], j["destination"], j["date"]) for j in tp.hub_sweep_jobs("buffalo", fares)}
+        self.assertIn(("BUF", "MCO", "2027-01-09"), jobs)
+        self.assertIn(("MCO", "SJU", "2027-01-12"), jobs)   # a 3-day stopover after Jan 9
+        self.assertNotIn(("ATL", "SJU", "2027-01-12"), jobs)  # not on sale in these calendars
+        self.assertEqual([], tp.hub_sweep_jobs("puerto_rico", fares))  # no hub_sweep set
+
     def test_voucher_expiry(self):
         from unittest import mock
         with mock.patch.object(tp, "VOUCHER_EXPIRES", NOW):
