@@ -390,7 +390,10 @@ def build_report(packages, coverage, now, validation=None):
            f"docks (~{DOCK:%H:%M}) + {LEAVE_SHIP_BUFFER_H:g} h + transfer. You pay the cheaper of GoWild / "
            "Discount Den per flight; partner Discount Den — or both on Discount Den on one booking.",
            "The $100 voucher only covers YOUR base fare and must be used to book before it expires, "
-           "so totals don't assume it. Score = total + $60/PTO day + $5/flight hour + $150/hotel night.", ""]
+           "so totals don't assume it. Score = total + $60/PTO day + $5/flight hour + $150/hotel night.",
+           "GoWild (base $0.01 + taxes) opens the day before domestic flights and 10 days before San "
+           "Juan; fares marked early-booking release are bookable now. A ship won't wait, so only plan "
+           "on a not-yet-released GoWild seat with a backup (e.g. fly the day before).", ""]
     for n_list, (title, pool) in enumerate(report_lists(packages)):
         out += ([""] if n_list else []) + [title, "-" * 64]
         out += [line for n, p in enumerate(pool, 1) for line in _pkg_lines(n, p, now)] or ["   (none)"]
