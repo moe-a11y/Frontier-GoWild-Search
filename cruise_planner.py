@@ -135,7 +135,7 @@ def scrape_ticker(build_driver, detail_wait=5):
             TICKER.write_text(json.dumps(dict(checked_at=datetime.now().astimezone().isoformat(),
                                               deals=deals), indent=1))
         print(f"{len(deals)} ticker deals")
-        done = {r["id"] for r in tp.read_jsonl(DETAILS)}
+        done = {r["id"] for r in tp.read_jsonl(DETAILS) if not r.get("error")}
         todo = [c for c in candidates(load_deals()) if c["id"] not in done and c.get("link")]
         print(f"{len(todo)} deal pages to fetch")
         for n, c in enumerate(todo, 1):
@@ -165,6 +165,19 @@ def load_details():
     for path in PAGES.glob("*.html") if PAGES.exists() else []:
         details["#" + path.stem] = dict(id="#" + path.stem, **parse_deal_page(path.read_text()))
     return details
+
+
+def with_details(cands, details):
+    """Add ports and cabin rates; the deal page was read after the ticker, so its
+    cheapest cabin is the price (the ticker's is kept as ticker_now)."""
+    out = []
+    for c in cands:
+        d = details.get(c["id"], {})
+        c = dict(c, ports=d.get("ports"), rates=d.get("rates"))
+        if c["rates"]:
+            c["ticker_now"], c["now"] = c["now"], min(c["rates"].values())
+        out.append(c)
+    return out
 
 
 # --- Frontier calendars + flight pages ----------------------------------------
@@ -331,7 +344,8 @@ def _pkg_lines(n, p, now):
              + f" · {c.get('rating', '?')}★ · {c.get('save', '?')}% off · VacationsToGo {c['id']}"
              + (f" · {c['note']}" if c.get("note") else "")]
     if c.get("rates"):
-        lines.append("      Cabins per person: " + ", ".join(f"{k} ${v:,}" for k, v in c["rates"].items()))
+        lines.append("      Cabins per person: " + ", ".join(f"{k} ${v:,}" for k, v in c["rates"].items())
+                     + (f" (the ticker said ${c['ticker_now']:,})" if c.get("ticker_now", c["now"]) != c["now"] else ""))
     if c.get("ports"):
         lines.append(f"      Stops: {', '.join(c['ports'])}")
     if not p["out"] and not p["back"]:
@@ -380,9 +394,7 @@ def build_report(packages, coverage, now):
 
 def make_report(now=None):
     now = now or datetime.now(timezone.utc)
-    details = load_details()
-    cands = [dict(c, **{k: details.get(c["id"], {}).get(k) for k in ("ports", "rates")})
-             for c in candidates(load_deals())]
+    cands = with_details(candidates(load_deals()), load_details())
     latest = tp.latest_records(tp.read_jsonl(tp.FLIGHTS))
     flights_by = {k: r["flights"] for k, r in latest.items() if r["status"] == "ok"}
     packages, no_flights = [], []

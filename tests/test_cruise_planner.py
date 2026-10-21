@@ -35,6 +35,13 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual({"Inside": 485, "Oceanview": 631}, cp.parse_deal_page(b)["rates"])
 
 
+    def test_deal_page_price_wins(self):
+        details = {"#1": dict(ports=["Cozumel, Mexico"], rates={"Inside": 179, "Balcony": 259})}
+        c = cp.with_details(cp.candidates([cruise()]), details)[0]
+        self.assertEqual((179, 169), (c["now"], c["ticker_now"]))
+        self.assertEqual(169, cp.with_details(cp.candidates([cruise()]), {})[0]["now"])
+
+
 class PackageTests(unittest.TestCase):
     def setUp(self):
         self.c = cp.candidates([cruise()])[0]
