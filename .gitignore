@@ -33,6 +33,7 @@ results/bufwatch_*.txt
 results/bufwatch_last.json
 results/colombia_*/
 results/trip_planner/
+results/cruise_planner/
 
 # Claude Code personal settings
 .claude/settings.local.json

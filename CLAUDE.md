@@ -159,6 +159,14 @@ undetected-chromedriver.
   GoWild for weeks-out dates isn't released yet, so run `watch` **daily during the trip
   window**: it re-checks shortlisted legs whose GoWild window is open and emails only when a
   new GoWild round trip appears. Data in `results/trip_planner/`. Tests: `tests/test_trip_planner.py`.
+- `cruise_planner.py` — **cruise + Frontier flights** (Oct 2026 request, Nov–Dec sailings):
+  full VacationsToGo 90-day ticker (not just `cruise_deals.py`'s top 10) + each deal page
+  (ports, cabin rates; VTG prices include taxes/port fees), filtered to ports Frontier reaches
+  (`PORTS`: port -> airports + transfer time; San Francisco needs no flight), paired with real
+  Frontier flights that land by ~11:00 on sailing day (or the day before) and leave after
+  docking + transfer, priced for two with trip_planner's rules. Phases `ticker` (headful:
+  VTG blocks headless) → `calendars` → `flights` → `report`; shares trip_planner's flight data.
+  Tests: `tests/test_cruise_planner.py`.
 - `gowild_fast.py`, `gowild_fast_bypass.py`, `roundtrip_fast.py`, `roundtrip_search.py` —
   `requests`/`curl_cffi` experiments; **blocked by PerimeterX** in practice. The two
   `roundtrip_fast`/`roundtrip_search` scripts reuse `gowild_fast`.

@@ -142,7 +142,10 @@ AIRPORT_TZ = {
                     "America/Los_Angeles"),
     **dict.fromkeys(("DEN", "SLC"), "America/Denver"),
     **dict.fromkeys(("MSY", "ORD"), "America/Chicago"),
-    **dict.fromkeys(("ATL", "MCO", "MIA", "FLL", "PHL", "EYW"), "America/New_York"),
+    **dict.fromkeys(("ATL", "MCO", "MIA", "FLL", "PHL", "EYW", "TPA", "JAX", "BOS", "LGA",
+                     "EWR", "BWI", "CHS"), "America/New_York"),
+    **dict.fromkeys(("IAH", "HOU", "DFW"), "America/Chicago"),
+    "SAN": "America/Los_Angeles", "SEA": "America/Los_Angeles",
     # Outside the continental US from here on (10-day GoWild window).
     **dict.fromkeys(("SJU", "BQN", "PSE", "STT", "STX"), "America/Puerto_Rico"),
     **dict.fromkeys(("SJO", "LIR"), "America/Costa_Rica"),
