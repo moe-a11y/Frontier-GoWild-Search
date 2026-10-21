@@ -222,6 +222,15 @@ class ItineraryTests(unittest.TestCase):
         self.assertEqual(2 * 108 - 100, both["total"])
         self.assertEqual([], tp.rule_problems(both))
         self.assertEqual(both["total"], tp.reprice(both, self.desert_trip(), NOW))
+        # Two travellers: each pays the taxes, so the voucher covers 2 x one person's base.
+        cheap = by_key(
+            flight("SFO", "ONT", "2026-12-05T21:56:00", "2026-12-05T23:23:00", dd=18.98),
+            flight("ONT", "SFO", "2026-12-08T19:26:00", "2026-12-08T21:01:00", dd=18.98),
+        )
+        two = next(i for i in tp.build_itineraries("desert", cheap, NOW) if i["category"] == "Couple DD")
+        one_base = 2 * (18.98 - 15.40) / 1.075
+        self.assertAlmostEqual(round(2 * one_base, 2), two["voucher"])
+        self.assertAlmostEqual(round(2 * 37.96 - 2 * one_base, 2), two["total"], places=1)
         # Same dates and airports: the list keeps the cheaper way for two (GoWild here).
         self.assertEqual(["Couple"], [i["category"] for i in tp.rank_trip(items)["couple"]])
         # The voucher caps at $100, and with separate tickets only the largest ticket counts.

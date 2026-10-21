@@ -646,11 +646,11 @@ def _est_base(f, price):
     return max(0.0, (price - 5.60 * min(n, 2) - 5.30 * n - 4.50 * min(n, 2)) / 1.075)
 
 
-def _voucher(flights, prices, self_connect):
-    """Voucher value usable on these fares: up to VOUCHER of base fare on one
-    booking (a round trip of through-tickets books as one; with separate
-    tickets, assume only the single largest ticket)."""
-    bases = [_est_base(f, p) for f, p in zip(flights, prices)]
+def _voucher(flights, prices, self_connect, travellers=1):
+    """Voucher value usable on these per-person fares: up to VOUCHER of base fare
+    on one booking (a round trip of through-tickets books as one; with separate
+    tickets, assume only the single largest ticket), for `travellers` people."""
+    bases = [travellers * _est_base(f, p) for f, p in zip(flights, prices)]
     return round(min(VOUCHER, max(bases) if self_connect else sum(bases)), 2)
 
 
@@ -762,7 +762,7 @@ def _add_itinerary(best, trip_key, origin, g_in, g_out, home, out, back, now):
     for category, (total, fares) in _price(flights, now).items():
         entries.append(dict(common, category=category, total=total, fares=fares))
         if category == "Discount Den":
-            voucher = _voucher(flights, [2 * p for p, _ in fares], self_connect)
+            voucher = _voucher(flights, [p for p, _ in fares], self_connect, travellers=2)
             entries.append(dict(common, category="Couple DD", fares=fares, user_total=total,
                                 user_category=category, voucher=voucher,
                                 total=round(2 * total - voucher, 2)))
@@ -1037,7 +1037,7 @@ def reprice(item, flights_by, now):
         dd = priced.get("Discount Den")
         if not dd:
             return None
-        return round(2 * dd[0] - _voucher(fresh, [2 * p for p, _ in dd[1]], item["self_connect"]), 2)
+        return round(2 * dd[0] - _voucher(fresh, [p for p, _ in dd[1]], item["self_connect"], 2), 2)
     if item["category"] == "Couple":
         user = priced.get("GoWild") or priced.get("GoWild + Discount Den")
         partner = [_cash(f) for f in fresh]
