@@ -332,6 +332,21 @@ class ItineraryTests(unittest.TestCase):
         self.assertNotIn(tp._itinerary_id(top), ids(per_trip["desert"]["couple"]))
         self.assertIn(tp._itinerary_id(top), ids(tp.shown_items({"desert": items})))
 
+    def test_buffalo_trip_with_a_two_day_stopover(self):
+        flights = by_key(
+            flight("BUF", "MCO", "2027-01-09T06:00:00", "2027-01-09T09:00:00", dd=49.0),
+            # Two days in Orlando, then on to San Juan on a separate ticket.
+            flight("MCO", "SJU", "2027-01-11T08:00:00", "2027-01-11T11:30:00", gw=55.44, dd=89.0),
+            flight("SJU", "BUF", "2027-01-17T12:00:00", "2027-01-17T17:00:00", dd=119.0),
+        )
+        items = tp.build_itineraries("buffalo", flights, NOW)
+        dd = next(i for i in items if i["category"] == "Discount Den")
+        self.assertEqual(("BUF", "SJU", "BUF", 9), (dd["origin"], dd["gateway_in"], dd["home"], dd["days"]))
+        self.assertTrue(dd["self_connect"])
+        self.assertEqual([], tp.rule_problems(dd))
+        # The Bay Area trips still cap a separate-ticket connection at 24 h.
+        self.assertTrue(any("self-connection" in p for p in tp.rule_problems(dict(dd, trip="puerto_rico"))))
+
     def test_voucher_expiry(self):
         from unittest import mock
         with mock.patch.object(tp, "VOUCHER_EXPIRES", NOW):

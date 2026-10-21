@@ -139,6 +139,28 @@ TRIPS = {
         window=WINDOW_NOV_DEC, days=(3, 5),
         hubs=("MCO", "MIA", "FLL", "ATL", "PHL", "SJU"),
     ),
+    # Oct 21 follow-up: from Buffalo after the holidays, 6+ days, anywhere outside
+    # the continental US; separate-ticket stopovers of up to 3 days are welcome.
+    "buffalo": dict(
+        title="Buffalo → Puerto Rico / outside the continental US",
+        gateways={
+            "SJU": "San Juan, PR", "BQN": "Aguadilla, PR", "PSE": "Ponce, PR",
+            "SDQ": "Santo Domingo, DR", "PUJ": "Punta Cana, DR", "STI": "Santiago, DR",
+            "POP": "Puerto Plata, DR", "MBJ": "Montego Bay, Jamaica", "KIN": "Kingston, Jamaica",
+            "SJO": "San Jose, Costa Rica", "LIR": "Liberia, Costa Rica",
+            "GUA": "Guatemala City", "SAL": "San Salvador, El Salvador",
+            "SAP": "San Pedro Sula, Honduras", "TGU": "Tegucigalpa, Honduras",
+            "RTB": "Roatan, Honduras", "MDE": "Medellin, Colombia", "BOG": "Bogota, Colombia",
+            "CTG": "Cartagena, Colombia", "CUN": "Cancun, Mexico", "MEX": "Mexico City",
+            "GDL": "Guadalajara, Mexico", "STT": "St. Thomas, USVI", "STX": "St. Croix, USVI",
+        },
+        groups=[("SJU", "BQN", "PSE"), ("SDQ", "PUJ", "STI", "POP"), ("MBJ", "KIN"),
+                ("SJO", "LIR"), ("GUA", "SAL"), ("SAP", "TGU", "RTB"), ("MDE", "BOG", "CTG"),
+                ("CUN",), ("MEX", "GDL"), ("STT", "STX")],
+        window=("2026-12-19", "2027-02-28"), days=(6, 12),
+        origins=("BUF",), stopover_days=3,
+        hubs=("MCO", "ATL", "PHL", "MIA", "FLL", "TPA", "SJU"),
+    ),
 }
 
 AIRPORT_TZ = {
@@ -147,7 +169,9 @@ AIRPORT_TZ = {
     **dict.fromkeys(("DEN", "SLC"), "America/Denver"),
     **dict.fromkeys(("MSY", "ORD"), "America/Chicago"),
     **dict.fromkeys(("ATL", "MCO", "MIA", "FLL", "PHL", "EYW", "TPA", "JAX", "BOS", "LGA",
-                     "EWR", "BWI", "CHS"), "America/New_York"),
+                     "EWR", "BWI", "CHS", "BUF", "RSW", "PBI", "MYR", "CLT", "CLE", "PIT"),
+                    "America/New_York"),
+    "DTW": "America/Detroit",
     **dict.fromkeys(("IAH", "HOU", "DFW"), "America/Chicago"),
     "SAN": "America/Los_Angeles", "SEA": "America/Los_Angeles",
     # Outside the continental US from here on (10-day GoWild window).
@@ -159,8 +183,15 @@ AIRPORT_TZ = {
     **dict.fromkeys(("SDQ", "PUJ", "STI", "POP"), "America/Santo_Domingo"),
     **dict.fromkeys(("MBJ", "KIN"), "America/Jamaica"),
     **dict.fromkeys(("MDE", "BOG", "CTG"), "America/Bogota"),
+    **dict.fromkeys(("CUN", "CZM"), "America/Cancun"),
+    **dict.fromkeys(("MEX", "GDL"), "America/Mexico_City"),
+    **dict.fromkeys(("SJD", "MZT"), "America/Mazatlan"),
+    "PVR": "America/Bahia_Banderas", "SXM": "America/Lower_Princes", "NAS": "America/Nassau",
+    "AUA": "America/Aruba", "CUR": "America/Curacao", "BZE": "America/Belize",
+    "GCM": "America/Cayman", "PLS": "America/Grand_Turk", "LIM": "America/Lima",
 }
-CONUS_TZS = {"America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York"}
+CONUS_TZS = {"America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York",
+             "America/Detroit"}
 
 # Weekdays most offices close, so they cost no PTO.
 DAYS_OFF = {"2026-11-26", "2026-11-27", "2026-12-25", "2027-01-01",
